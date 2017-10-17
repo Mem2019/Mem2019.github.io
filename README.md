@@ -15,6 +15,9 @@ Syntax highlighted code block
 ## Header 2
 ### Header 3
 
+Header 1
+test
+
 - Bulleted
 - List
 
