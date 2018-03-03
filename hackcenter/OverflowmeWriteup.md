@@ -60,15 +60,7 @@ when executing the process
 
 When vuln terminates, where control flow can be hijacked:
 
-\*EAX  0x0
- EBX  0xffffce90 ◂— 0x2
-\*ECX  0xf7fb4870 \(\_IO\_stdfile\_1\_lock\) ◂— 0
-\*EDX  0x0
- EDI  0xf7fb3000 \(\_GLOBAL\_OFFSET\_TABLE\_\) ◂— mov    al, 0x1d /\* 0x1b1db0 \*/
- ESI  0xf7fb3000 \(\_GLOBAL\_OFFSET\_TABLE\_\) ◂— mov    al, 0x1d /\* 0x1b1db0 \*/
-\*EBP  0xffffce78 ◂— 0x0
-\*ESP  0xffffce5c —▸ 0x8048683 \(main\+73\) ◂— add    esp, 0x10
-\*EIP  0x8048615 \(vuln\+72\) ◂— ret    
+![](overflowme_register.png)
 
 ebx/esp/ebp points to stack, which means that we can fill this address using our payload. However, there is no such instruction in this program since the program is so small.
 
@@ -98,13 +90,7 @@ However, there is not such function imported as read/scanf, so we cannot do this
 
 Utilizing data in register cannot succeed, so why not utilize data in stack? It is possible.
 
-00:0000│ esp  0xffffcb5c —▸ 0x8048600 (vuln+51) ◂— les    edx, ptr [eax]
-01:0004│      0xffffcb60 —▸ 0xffffce5f ◂— 0x41414141 ('AAAA')
-02:0008│      0xffffcb64 —▸ 0xffffcc24 —▸ 0xffffce24 ◂— 0x6d6f682f ('/hom')
-03:000c│      0xffffcb68 —▸ 0xffffcb78 ◂— 0x0
-04:0010│      0xffffcb6c —▸ 0x8048672 (main+56) ◂— mov    eax, dword ptr [ebx + 4]
-05:0014│      0xffffcb70 —▸ 0xffffcb90 ◂— 0x2
-06:0018│      0xffffcb74 ◂— 0x0
+![](overflowme_stack.png)
 
 This is stack when ret in vuln is executed. Nice! The 2nd dword in stack points to our payload since argument of vuln is pointer to our input, so as long as we make return address to be a ret, double ret will make eip jump to our shellcode!
 
@@ -116,14 +102,7 @@ However, we can do several sequence of ret until next dword, if least significan
 
 Actually,  if we clear LSB of 0xffffcb78 to get 0xffffcb00, we can find that
 
-pwndbg> x/16s 0xffffcb00
-0xffffcb00:	'A' \<repeats 15 times\>...
-0xffffcb0f:	'A' \<repeats 15 times\>...
-0xffffcb1e:	'A' \<repeats 15 times\>...
-0xffffcb2d:	'A' \<repeats 15 times\>...
-0xffffcb3c:	'A' \<repeats 15 times\>...
-0xffffcb4b:	'A' \<repeats 15 times\>...
-0xffffcb5a:	"AA"
+![](overflowme_see.png)
 
 Wow! This can be our shellcode if we put shellcode in the end of payload!
 
