@@ -370,15 +370,15 @@ void* pop(struct node **stack) {
 1. 添加两个worker协程
 2. 创建两个job，大小为128，最开始我用128是为了防止因为创建的用于装内容的堆被塞入fastbin，不过后面看了一下，这个内存不会被free掉。。。所以不影响，但是后面这个job是可能要拿来装payload的，所以尽量大点也无所谓吧。先添加worker再添加job也是有道理的，因为第一，我们的payload可能要有堆基址的信息，而worker可以直接泄露堆基址，所以先拿到堆基址总没坏处；第二，到时候ROP可能会调用scanf这种函数，需要很大栈空间，所以在后面malloc可以使得他在堆区域的比较后面的位置，这样栈的空间就足够了。
 3. 这个时候yield，我们发现两个worker不会立刻开始计算，而是会卡在pop的yield，然后切回主协程，如图。此时，new\_head和old\_head，分别是第1个job和第2个job。
- ![](hackcenter/742286_X4WYPPN6B8XBVAG.png)
+ ![](742286_X4WYPPN6B8XBVAG.png)
 4. 此时暂停第二个worker，所以待会yield他就不会运行了
 5. yield两次，用第一个worker计算出crc32，此时job\_stack为空\(NULL\)
 6. 收集crc32的运行结果，这时会释放result和node到大小为0x10的fastbin中（注意虽然result分配的大小是4，但是会向上取8的倍数，加上堆块的头，就是16bytes）。如图，此时0x10的fastbin中有4个chunk，其中从左到右第一个和第三个是之前result的内存空间，而第二个和第四个是node的内存空间。因为收集result时，是先pop，其中调用了free，再free的result。从左到右前两个是第2个job所malloc过的内存，后两个是第1个job所malloc过的内存。。
- ![](hackcenter/742286_YN4474EZ5XWZVK8.png)
+ ![](742286_YN4474EZ5XWZVK8.png)
 7. 这个时候再创建一个大小为128的job，注意这个大小不能太小，不然会从fastbin里面拿。此时是先malloc的result，然后push里面再malloc的node。所以，存入job\_stack的，刚好是第2个job的node，同时，这个值也会等于正在暂停的第二个worker的old\_head！这样，如果我们再运行第二个worker，\*stack == old_head会被通过！并且，job\_stack的值会被设置为之前所存放的的new\_head，这是第1个job的node，而这个地址此时还在fastbin中！这样我们就构造了一个UAF！
 8. 恢复worker 2
 9. yield，构造出如上所说的UAF，如图所示
- ![](hackcenter/742286_5GST5YTHQRW8QBS.png)
+ ![](742286_5GST5YTHQRW8QBS.png)
 ## 0x04 利用UAF
 
 接下来就是想，该怎么利用这个UAF了。
@@ -408,7 +408,7 @@ push(&job_stack, job);
 此时，0x10的fastbin中有两个chunk，如果size < 8的话，input会拿第一个，而result就拿第二个。而result，是存放计算crc32结果的地方，同时也是\*job\_stack此时的值！既然是存放我们输入数据的crc32计算结果的地方，我们相当于可以控制他的值！那么，如果我们构造一个4字节的payload，使得crc32的计算结果是我们某个可控的chunk的地址（比方说，第一个job内容的地址），便可以伪造一个job struct，其中result指向某个地址，input指向crc32是这个地址的payload。这个时候再算这个job，便可以实现任意地址DWORD SHOOT！
 
 如图所示：
- ![](hackcenter/742286_MP57FSG3UZYQR4V.png)
+ ![](742286_MP57FSG3UZYQR4V.png)
 
 具体步骤为：（接上面的）
 
@@ -756,4 +756,4 @@ int main()
 ## 0x08 后言
 
 哈哈，我其实是在这个训练平台上第一个做出来这道题的，可以。最后，再次祝大家苟年大吉，万事如意，新的一年挖到更多0day！
- ![图片描述](hackcenter/742286_CKCAC3V69KJFXPC.png)
+ ![图片描述](742286_CKCAC3V69KJFXPC.png)
