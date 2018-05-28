@@ -321,4 +321,3 @@ int main(int argc, char const *argv[])
 ```
 
 参数是进程名带有fcitx的所有进程的最小pid，如果当前分配到的比较小的话，会把linux的pid滚一次，使得分配到的pid比fcitx的小，这样的话要运行两次（不知道为什么，fork太快在/proc就看不到进程了。。不知道是Linux的bug还是feature。。。）
-
