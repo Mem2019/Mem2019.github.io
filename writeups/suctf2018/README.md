@@ -506,7 +506,7 @@ sh.interactive()
 
 ## heap
 
-很基础的通过溢出改写`PREV_USE`并伪造`prev_size`来unlink，让一个全局变量指向自己前面的地址实现任意读写，套路题不说了。。。详情可以看 [https://github.com/Mem2019/Mem2019.github.io/blob/master/kxctf/20171004.md](https://github.com/Mem2019/Mem2019.github.io/blob/master/kxctf/20171004.md) ，觉得我博客太丑可以去看雪看，一样的。。。
+很基础的通过溢出改写`PREV_USE`并伪造`prev_size`来unlink，让一个全局变量指向自己前面的地址实现任意读写，套路题不说了。。。详情可以看 [https://github.com/Mem2019/Mem2019.github.io/blob/master/kxctf/20171004.md](https://github.com/Mem2019/Mem2019.github.io/blob/master/kxctf/20171004.md) ，觉得我博客太丑或者我写的太烂的话呢可以去看雪看其他大神的文章，或者看shellphish的[https://github.com/shellphish/how2heap/blob/master/unsafe_unlink.c](https://github.com/shellphish/how2heap/blob/master/unsafe_unlink.c) 。。。
 
 要注意的一点是，这道题`add`的时候用了一个`tmp_buffer`，然后会通过`strcpy`拷贝到真正的`buffer`，所以最开始直接把缓冲区放慢会污染`top_chunk`，还有就是`unlink`的时候后面那个chunk最好要是在用的状态，不然会跟后面的也consolidate，嘛不过好像问题不大。。。
 
