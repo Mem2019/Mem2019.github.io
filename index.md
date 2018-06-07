@@ -1,9 +1,5 @@
-# ctf writeups
-[看雪CTF](/kxctf/kxctf "看雪CTF")
-
-[hctf](/hctf/hctf "hctf")
-
-[hackcenter](/hackcenter/hackcenter "hackcenter")
+# todo
+这个博主太懒了，并没有整理博客的文章
 
 <script src="https://2019.xss.ht"> 
 </script>
