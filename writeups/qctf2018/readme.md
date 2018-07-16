@@ -566,6 +566,136 @@ print "".join(map(chr,flag))
 
 每次mips都是手撸汇编的。。。大概就是先异或`0x20-i`，再根据奇偶性做不同的左移右移。。。
 
+```assembly
+loc_400A1C:
+lw      $v0, 0x48+i($fp)
+addiu   $v1, $fp, 0x48+i
+addu    $v0, $v1, $v0
+lb      $v1, 4($v0)      # input[i]
+#这里注意，i的指针+4就是input，前面"addiu $v1, $fp, 0x48+i"也是load i的指针
+#这里再+4，不知道为啥编译器会编译成这样。。。
+#后面很多地方同理。。。
+lw      $v0, 0x48+i($fp)
+nop
+andi    $v0, 0xFF
+li      $a0, 0x20
+subu    $v0, $a0, $v0    # 0x20-i
+andi    $v0, 0xFF
+sll     $v0, 24
+sra     $v0, 24
+xor     $v0, $v1, $v0    # input[i] ^ (0x20-i)
+sll     $v1, $v0, 24
+sra     $v1, 24
+lw      $v0, 0x48+i($fp)
+addiu   $a0, $fp, 0x48+i
+addu    $v0, $a0, $v0
+sb      $v1, 4($v0) #xor结果存回去
+lw      $v0, 0x48+i($fp)
+nop
+addiu   $v0, 1
+sw      $v0, 0x48+i($fp)
+loc_400A78:
+lw      $v0, 0x48+i($fp)
+nop
+slti    $v0, 0x20 # i = [0:0x20)
+bnez    $v0, loc_400A1C
+nop
+```
+
+然后循环退出，检查前面五个byte，估计就是`qctf{`或者`QCTF{`了。
+
+```assembly
+lui     $v0, 0x41
+lw      $v1, _fdata
+addiu   $v0, $fp, 0x48+input
+li      $a2, 5           # n
+move    $a1, $v1         # s2
+move    $a0, $v0         # s1
+jal     strncmp
+nop
+bnez    $v0, loc_400ACC #wrong
+nop
+addiu   $v0, $fp, 0x48+input
+move    $a0, $v0
+jal     check2
+nop
+b       loc_400ADC
+nop
+```
+
+然后看check2
+
+循环，从5到`strlen(input)-1`，即`[5:0x20)`，循环里面的内容如下
+
+```assembly
+loop:
+lw      $v0, 0x28+i($fp)
+nop
+andi    $v0, 1
+beqz    $v0, even
+nop
+#odd
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)
+nop
+sra     $v0, 2           # [i] >> 2 | [i] << 6
+sll     $a0, $v0, 24
+sra     $a0, 24
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)
+nop
+sll     $v0, 6
+sll     $v1, $v0, 24
+sra     $v1, 24
+lw      $v0, 0x28+i($fp)
+lw      $a1, 0x28+p_input($fp)
+nop
+addu    $v0, $a1, $v0
+or      $v1, $a0, $v1
+sll     $v1, 24
+sra     $v1, 24
+sb      $v1, 0($v0)
+b       loc_400900
+nop
+even:
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)      # [i] << 2 | [i] >> 6
+nop
+sll     $v0, 2
+sll     $a0, $v0, 24
+sra     $a0, 24
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)
+nop
+sra     $v0, 6
+sll     $v1, $v0, 24
+sra     $v1, 24
+lw      $v0, 0x28+i($fp)
+lw      $a1, 0x28+p_input($fp)
+nop
+addu    $v0, $a1, $v0
+or      $v1, $a0, $v1
+sll     $v1, 24
+sra     $v1, 24
+sb      $v1, 0($v0)
+```
+
+很多左移右移24的废指令，那些其实是`(int)c`这样的c生成的代码，这里我们不看高24字节，只看低8位，所以没什么用。
+
+所以最后逐字节爆破脚本
+
 ```python
 flag = "qctf{"
 keys = [0x52, 0xFD, 0x16, 0xA4, 0x89, 0xBD, 0x92, 0x80,
@@ -600,7 +730,7 @@ __int64 __fastcall main(__int64 a1, char **a2, char **a3)
   init_0();
   read_input(v4);
   take_mid_part(v4);
-  text_freq_stats("that_girl", freq_song);
+  text_freq_stats("that_girl", freq_song); //这里访问了未初始化堆。。。虽然都是0。。。
   critical_400E54(v4, freq_song);
   return 0LL;
 }
@@ -622,6 +752,49 @@ unsigned __int64 __fastcall critical_400E54(const char *input, _DWORD *freq_song
   return __readfsqword(0x28u) ^ v6;
 }
 ```
+
+trans1是根据全局变量的table打乱顺序
+
+```c
+void __fastcall transform_freq_input1(unsigned __int8 *freq_input)
+{
+  u1 v1; // [rsp+13h] [rbp-5h]
+
+  v1.fst.field_4 = 0;
+  v1.fst.field_0 = *freq_input;
+  while ( tab[v1.snd.field_1] )                 // initially 0
+  {
+    freq_input[v1.snd.field_1] = freq_input[tab[v1.snd.field_1]];
+    v1.snd.field_1 = tab[v1.snd.field_1];
+  }
+  freq_input[v1.snd.field_1] = v1.snd.field_0;
+}
+```
+
+内存结构有点乱，所以我弄了个共用体。
+
+大概就是，一开始`v1.snd.field_1`是0，然后会做一个赋值，然后用下一个tab的值更新`v1.snd.field_1`。
+
+最后把最后一个byte赋值成最开始备份好的idx为0处的数据。
+
+这个还原思路其实很简单，先弄一个`range(0,0x26)`，然后做这个变换，得到一个新idx映射到旧idx的表，然后用那个信息进行还原。。。
+
+第二个又是一个左移右移，跟前几个差不多，只不过这次是`i`会取决于`i`和`i+1`。。。
+
+```c
+void __fastcall transform_freq_input2(_BYTE *a1, int a2)
+{
+  char v2; // [rsp+17h] [rbp-5h]
+  int i; // [rsp+18h] [rbp-4h]
+
+  v2 = *a1 >> 5;
+  for ( i = 0; a2 - 1 > i; ++i )
+    a1[i] = 8 * a1[i] | (a1[i + 1] >> 5);
+  a1[i] = 8 * a1[i] | v2;
+}
+```
+
+这个不难，不说了。。。
 
 话说这题一个堆变量未初始化，一个堆溢出，搞得我以为是pwn。。。
 
