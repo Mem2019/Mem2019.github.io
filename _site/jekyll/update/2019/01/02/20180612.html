@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>20180612</title>
+  <meta name="description" content="0x00 前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/20180612.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">20180612</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h1 id="0x00">0x00 前言</h1>
+
+<p>一道纸老虎的题目，关键校验函数F5出来有2k多行，看起来可怕难逆，实际上很多没用的代码，解题关键在于定位有用的代码。</p>
+
+<h1 id="0x01">0x01 寻找校验函数</h1>
+
+<p>随便翻一下发现<code class="prettyprint">0x140002E00</code>这个函数很像关键校验函数，F5一看，很可怕，2400多行。xref一下，发现调用他的很可能是main函数，动态调试发现的确是（通过命令行参数识别，这题输入是命令行参数）。再看看校验函数，一开始觉得这题估计做不出了。（做题靠猜233）</p>
+
+<p>（话说IDA没法自动识别64位PE的main函数的吗？还是做了混淆？）</p>
+
+<p>看了一下加上动态调试发现<code class="prettyprint">0x14000E55C</code>很可能是一个<code class="prettyprint">strcpy</code>函数</p>
+
+<p>然后main函数如下</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c">  <span class="k">if</span> <span class="p">(</span> <span class="n">argc</span> <span class="o">==</span> <span class="mi">2</span> <span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">my_strcpy</span><span class="p">(</span><span class="n">input</span><span class="p">,</span> <span class="mi">260</span><span class="n">i64</span><span class="p">,</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="mi">260</span><span class="n">i64</span><span class="p">);</span>
+    <span class="n">check</span><span class="p">(</span><span class="o">&amp;</span><span class="n">retaddr</span><span class="p">);</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="p">}</span>
+  <span class="k">else</span>
+  <span class="p">{</span>
+      <span class="c1">//else里面的代码也很恐怖
+</span>      <span class="c1">//但是题目明显参数不为2就会给出"input like this:crackme.exe mykey"的提示
+</span>      <span class="c1">//猜测是一个动态生成字符串并输出的功能
+</span>  <span class="p">}</span>
+</code></pre></div>
+<p><code class="prettyprint">strcpy</code>会把输入复制到一个全局变量，然后check会去访问它，并且校验。</p>
+
+<h1 id="0x02-check">0x02 纸老虎check函数</h1>
+
+<p>回到看起来很难逆check函数，思路是，不可能一行行逆这个东西，要找关键代码，即，它在哪里访问了输入，怎么访问的？说的高端点，叫做静态污点分析。</p>
+
+<p><img src="/images/1531058254016.png" alt="1531058254016"></p>
+
+<h2 id="check-1">check 1</h2>
+
+<p>那么直接定位到访问input的地方，首先我看到的是这个：</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c">  <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808510693665524758</span><span class="n">i64</span> <span class="p">)</span><span class="c1">// check [0:9]
+</span>  <span class="p">{</span>
+    <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808494200991101593</span><span class="n">i64</span> <span class="p">)</span>
+    <span class="p">{</span>
+      <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span>
+      <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808519489758550446</span><span class="n">i64</span> <span class="p">)</span>
+      <span class="p">{</span>
+        <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+        <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808507395130640125</span><span class="n">i64</span> <span class="p">)</span>
+        <span class="p">{</span>
+          <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span>
+          <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808522788293435079</span><span class="n">i64</span> <span class="p">)</span>
+          <span class="p">{</span>
+            <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">5</span><span class="p">];</span>
+            <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808606351177179115</span><span class="n">i64</span> <span class="p">)</span>
+            <span class="p">{</span>
+              <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">6</span><span class="p">];</span>
+              <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808608550200435537</span><span class="n">i64</span> <span class="p">)</span>
+              <span class="p">{</span>
+                <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">7</span><span class="p">];</span>
+                <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808609649712063748</span><span class="n">i64</span> <span class="p">)</span>
+                <span class="p">{</span>
+                  <span class="n">iter</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">input</span><span class="p">[</span><span class="mi">8</span><span class="p">];</span>
+                  <span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">iter</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">5808599754107409849</span><span class="n">i64</span> <span class="p">)</span>
+                  <span class="p">{</span>                    
+                    <span class="n">v42</span> <span class="o">=</span> <span class="mi">0</span><span class="n">i64</span><span class="p">;</span>
+                    <span class="n">v37</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+                    <span class="n">v43</span> <span class="o">=</span> <span class="mi">329472</span><span class="n">i64</span><span class="p">;</span>
+                  <span class="p">}</span>
+                  <span class="k">else</span>
+                  <span class="p">{</span>
+                    <span class="n">v42</span> <span class="o">=</span> <span class="mh">0x100000000</span><span class="n">i64</span><span class="p">;</span>
+                    <span class="n">v43</span> <span class="o">=</span> <span class="mi">3750656</span><span class="n">i64</span><span class="p">;</span>
+                  <span class="p">}</span>
+                    <span class="c1">//其他else一样
+</span></code></pre></div>
+<p>很有可能是一个校验，动态调试也发现input并未被改变，那么逐字节爆破</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">signed</span> <span class="n">__int64</span> <span class="kr">__fastcall</span> <span class="nf">sub_140002AC0</span><span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="n">a1</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="kt">char</span> <span class="n">v1</span><span class="p">;</span> <span class="c1">// dl
+</span>    <span class="kt">signed</span> <span class="n">__int64</span> <span class="n">result</span><span class="p">;</span> <span class="c1">// rax
+</span>    <span class="kt">signed</span> <span class="n">__int64</span> <span class="n">v3</span><span class="p">;</span> <span class="c1">// rax
+</span>
+    <span class="n">v1</span> <span class="o">=</span> <span class="o">*</span><span class="n">a1</span><span class="p">;</span>
+    <span class="k">for</span> <span class="p">(</span><span class="n">result</span> <span class="o">=</span> <span class="o">-</span><span class="mi">3750763034362895579</span><span class="n">i64</span><span class="p">;</span> <span class="o">*</span><span class="n">a1</span><span class="p">;</span> <span class="n">result</span> <span class="o">=</span> <span class="mi">1099511628211</span><span class="n">i64</span> <span class="o">*</span> <span class="n">v3</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="o">++</span><span class="n">a1</span><span class="p">;</span>
+        <span class="n">v3</span> <span class="o">=</span> <span class="n">result</span> <span class="o">^</span> <span class="n">v1</span><span class="p">;</span>
+        <span class="n">v1</span> <span class="o">=</span> <span class="o">*</span><span class="n">a1</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">signed</span> <span class="n">__int64</span> <span class="n">arr</span><span class="p">[</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="o">-</span><span class="mi">5808510693665524758</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808494200991101593</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808519489758550446</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808507395130640125</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808522788293435079</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808606351177179115</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808608550200435537</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808609649712063748</span><span class="n">i64</span><span class="p">,</span>
+<span class="o">-</span><span class="mi">5808599754107409849</span><span class="n">i64</span> <span class="p">};</span>
+
+<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">9</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">256</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">sub_140002AC0</span><span class="p">((</span><span class="kt">char</span><span class="o">*</span><span class="p">)(</span><span class="o">&amp;</span><span class="n">j</span><span class="p">))</span> <span class="o">==</span> <span class="n">arr</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+        <span class="p">{</span>
+            <span class="n">printf</span><span class="p">(</span><span class="s">"%c"</span><span class="p">,</span> <span class="p">(</span><span class="kt">char</span><span class="p">)</span><span class="n">j</span><span class="p">);</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>得出答案为<code class="prettyprint">KXCTF2018</code>，试一下发现不对（怎么可能这么简单</p>
+
+<h2 id="check-2">check 2</h2>
+
+<p>接下来看到的是一个疑似长度的校验</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c">  <span class="k">do</span>
+    <span class="o">++</span><span class="n">len</span><span class="p">;</span>
+  <span class="k">while</span> <span class="p">(</span> <span class="n">input</span><span class="p">[</span><span class="n">len</span><span class="p">]</span> <span class="p">);</span>
+  <span class="n">LODWORD</span><span class="p">(</span><span class="n">v307</span><span class="p">)</span> <span class="o">=</span> <span class="n">len</span><span class="p">;</span>
+  <span class="n">HIDWORD</span><span class="p">(</span><span class="n">v307</span><span class="p">)</span> <span class="o">=</span> <span class="mi">5</span> <span class="o">-</span> <span class="n">HIDWORD</span><span class="p">(</span><span class="n">len</span><span class="p">);</span>
+  <span class="n">v529</span> <span class="o">=</span> <span class="p">((</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)</span><span class="n">len</span> <span class="o">+</span> <span class="p">((</span><span class="kt">unsigned</span> <span class="n">__int64</span><span class="p">)</span><span class="n">HIDWORD</span><span class="p">(</span><span class="n">len</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="mi">32</span><span class="p">))</span> <span class="o">&gt;&gt;</span> <span class="mi">12</span><span class="p">;</span>
+<span class="c1">//无用代码，稍微有点长
+</span>  <span class="k">if</span> <span class="p">(</span> <span class="p">(</span><span class="n">len</span> <span class="o">&amp;</span> <span class="mh">0xFFF</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">v529</span> <span class="o">&lt;&lt;</span> <span class="mi">12</span><span class="p">)</span> <span class="o">==</span> <span class="mi">30</span> <span class="p">)</span>
+      <span class="c1">//...
+</span></code></pre></div>
+<p>看起来很复杂的操作，但是稍微看一下加上动态调试一下的话，就能发现这是在检查长度为30</p>
+
+<h2 id="check-3">check 3</h2>
+
+<p>紧接着看后面的代码，又访问了input</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c">  <span class="k">if</span> <span class="p">(</span> <span class="p">(</span><span class="n">len</span> <span class="o">&amp;</span> <span class="mh">0xFFF</span><span class="p">)</span> <span class="o">+</span> <span class="p">(</span><span class="n">v529</span> <span class="o">&lt;&lt;</span> <span class="mi">12</span><span class="p">)</span> <span class="o">==</span> <span class="mi">30</span> <span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">v8</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="n">i_1</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+    <span class="k">if</span> <span class="p">(</span> <span class="n">len</span> <span class="p">)</span>
+    <span class="p">{</span>
+      <span class="n">iter_input</span> <span class="o">=</span> <span class="n">input</span><span class="p">;</span>
+      <span class="k">do</span>
+      <span class="p">{</span>
+        <span class="n">v184</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+        <span class="n">v11</span> <span class="o">=</span> <span class="o">*</span><span class="n">iter_input</span><span class="p">;</span>
+        <span class="n">LOBYTE</span><span class="p">(</span><span class="n">v184</span><span class="p">)</span> <span class="o">=</span> <span class="n">v11</span><span class="p">;</span>
+        <span class="n">v12</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v184</span><span class="p">;</span>
+        <span class="n">v13</span> <span class="o">=</span> <span class="o">-</span><span class="mi">3750763034362895579</span><span class="n">i64</span><span class="p">;</span>
+        <span class="k">if</span> <span class="p">(</span> <span class="n">v11</span> <span class="p">)</span>
+        <span class="p">{</span>
+          <span class="k">do</span>
+          <span class="p">{</span>
+            <span class="n">v13</span> <span class="o">=</span> <span class="mi">1099511628211</span><span class="n">i64</span> <span class="o">*</span> <span class="p">(</span><span class="n">v13</span> <span class="o">^</span> <span class="n">v11</span><span class="p">);</span>
+            <span class="n">v11</span> <span class="o">=</span> <span class="o">*++</span><span class="n">v12</span><span class="p">;</span>
+          <span class="p">}</span><span class="c1">//实际上是内联了sub_140002AC0
+</span>          <span class="k">while</span> <span class="p">(</span> <span class="o">*</span><span class="n">v12</span> <span class="p">);</span>
+        <span class="p">}</span>
+        <span class="n">v14</span> <span class="o">=</span> <span class="n">v8</span> <span class="o">+</span> <span class="mi">1</span><span class="p">;</span>
+        <span class="k">if</span> <span class="p">(</span> <span class="n">v13</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">5808600853619038060</span><span class="n">i64</span> <span class="p">)</span>
+          <span class="n">v14</span> <span class="o">=</span> <span class="n">v8</span><span class="p">;</span>
+        <span class="n">v8</span> <span class="o">=</span> <span class="n">v14</span><span class="p">;</span>
+        <span class="o">++</span><span class="n">i_1</span><span class="p">;</span>
+        <span class="o">++</span><span class="n">iter_input</span><span class="p">;</span>
+      <span class="p">}</span>
+      <span class="k">while</span> <span class="p">(</span> <span class="n">i_1</span> <span class="o">&lt;</span> <span class="n">len</span> <span class="p">);</span>
+      <span class="n">v1</span> <span class="o">=</span> <span class="mi">32</span><span class="n">i64</span><span class="p">;</span>
+      <span class="k">if</span> <span class="p">(</span> <span class="n">v14</span> <span class="o">&gt;=</span> <span class="mi">3</span> <span class="p">)</span>                           <span class="c1">// 3个以上的9
+</span>      <span class="p">{</span>
+          <span class="c1">//...
+</span>      <span class="p">}</span>
+</code></pre></div>
+<p>大概逻辑是，满足<code class="prettyprint">sub_140002AC0((char*)(&amp;j)) == -5808600853619038060i64</code>的，要有3个以上。</p>
+
+<p>同样爆破一下</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mi">256</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">sub_140002AC0</span><span class="p">((</span><span class="kt">char</span><span class="o">*</span><span class="p">)(</span><span class="o">&amp;</span><span class="n">j</span><span class="p">))</span> <span class="o">==</span> <span class="n">check3more</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%c"</span><span class="p">,</span> <span class="p">(</span><span class="kt">char</span><span class="p">)</span><span class="n">j</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>结果为<code class="prettyprint">9</code></p>
+
+<h2 id="check-4">check 4</h2>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="k">if</span> <span class="p">(</span> <span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">input</span><span class="p">)</span> <span class="o">==</span> <span class="mi">5728707748789076223</span><span class="n">i64</span> <span class="p">)</span><span class="c1">// check whole input
+</span><span class="p">{</span>
+    <span class="n">LODWORD</span><span class="p">(</span><span class="n">v46</span><span class="p">)</span> <span class="o">=</span> <span class="mi">31</span><span class="p">;</span>
+    <span class="n">LODWORD</span><span class="p">(</span><span class="n">v47</span><span class="p">)</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>整个input的hash（<code class="prettyprint">sub_140002AC0</code>貌似是一个hash函数，但是又没有雪崩效应）的检查，很明显现在条件不足。</p>
+
+<h2 id="check-5">check 5</h2>
+
+<p>其实到现在为止，还并没有找到爆破点，只是一直在“猜”。因为一般来讲，一个判断，更加复杂（明显有更复杂的代码）或者更难到达（比方说等于情况，任意输入一般都是不等于的可能性要更大）的一条路径，是正确答案所需要被走到的。前面几个check，也是根据这个“猜”的。</p>
+
+<p>现在走下一个check，</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c">  <span class="n">memset</span><span class="p">(</span><span class="n">dll_name</span><span class="p">,</span> <span class="mi">0</span><span class="n">i64</span><span class="p">,</span> <span class="mh">0x104u</span><span class="n">i64</span><span class="p">);</span>
+  <span class="n">v80</span> <span class="o">=</span> <span class="n">strstr</span><span class="p">(</span><span class="n">input</span><span class="p">,</span> <span class="s">"9"</span><span class="p">);</span>
+  <span class="n">v81</span> <span class="o">=</span> <span class="n">v80</span><span class="p">;</span>
+  <span class="n">dll_name</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">v80</span><span class="p">[</span><span class="mi">1</span><span class="p">];</span>
+  <span class="n">dll_name</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">v80</span><span class="p">[</span><span class="mi">2</span><span class="p">];</span>
+  <span class="n">dll_name</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">v80</span><span class="p">[</span><span class="mi">3</span><span class="p">];</span>
+  <span class="n">dll_name</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">v80</span><span class="p">[</span><span class="mi">4</span><span class="p">];</span>
+  <span class="n">dll_name</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="n">v80</span><span class="p">[</span><span class="mi">5</span><span class="p">];</span>           <span class="c1">// 第一个9后面取5个字节
+</span>  <span class="n">mystrcat</span><span class="p">(</span><span class="n">dll_name</span><span class="p">,</span> <span class="mi">260u</span><span class="n">i64</span><span class="p">,</span> <span class="s">".DLL"</span><span class="p">,</span> <span class="mi">260u</span><span class="n">i64</span><span class="p">);</span>
+  <span class="n">v82</span> <span class="o">=</span> <span class="n">strstr</span><span class="p">(</span><span class="n">v81</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s">"9"</span><span class="p">);</span>
+  <span class="n">snd9</span> <span class="o">=</span> <span class="n">v82</span><span class="p">;</span>
+  <span class="o">*</span><span class="n">strstr</span><span class="p">(</span><span class="n">v82</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="s">"9"</span><span class="p">)</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">memset</span><span class="p">(</span><span class="o">&amp;</span><span class="n">proc_name</span><span class="p">,</span> <span class="mi">0</span><span class="n">i64</span><span class="p">,</span> <span class="mi">260u</span><span class="n">i64</span><span class="p">);</span>
+  <span class="n">my_strcpy</span><span class="p">(</span><span class="o">&amp;</span><span class="n">proc_name</span><span class="p">,</span> <span class="mi">260</span><span class="n">i64</span><span class="p">,</span> <span class="n">snd9</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">260</span><span class="n">i64</span><span class="p">);</span> <span class="c1">//取第二个9到第三个9之间的字符串
+</span></code></pre></div>
+<p>其中这些函数的识别，肯定不是通过静态逆向，点进去发现一堆SSE就能吓跑人了，识别是通过猜+调试。</p>
+
+<p>然后这刚好对应大于3个9的check，说明应该没逆错。</p>
+
+<p>其中有个strcat把<code class="prettyprint">.DLL</code>加在后面，难道是把输入作为一个dll名？看了一下发现题目并没有给出dll附件。</p>
+
+<p>那么继续看先吧，看看这两个参数是怎么被用的。这后面又有大量的代码，不管它们，用xref。发现一个调用</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">module_addr</span> <span class="o">=</span> <span class="p">((</span><span class="n">__int64</span> <span class="p">(</span><span class="kr">__fastcall</span> <span class="o">*</span><span class="p">)(</span><span class="kt">char</span> <span class="o">*</span><span class="p">))((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">v94</span> <span class="o">+</span> <span class="o">*</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="o">*</span><span class="p">)((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v94</span><span class="p">[</span><span class="o">*</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kr">__int16</span> <span class="o">*</span><span class="p">)((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">v94</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">v98</span> <span class="o">+</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)</span><span class="n">v95</span><span class="p">[</span><span class="mi">9</span><span class="p">])]</span> <span class="o">+</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)</span><span class="n">v95</span><span class="p">[</span><span class="mi">7</span><span class="p">])))(</span><span class="n">dll_name</span><span class="p">);</span>
+<span class="o">::</span><span class="n">module_addr</span> <span class="o">=</span> <span class="n">module_addr</span><span class="p">;</span>
+</code></pre></div>
+<p>函数地址貌似是动态生成的，猜测这是一个LoadLibrary函数，x64dbg一看，果然是。</p>
+
+<p>然后<code class="prettyprint">proc_name</code>的下一次被使用（当然现在还不知道是<code class="prettyprint">proc_name</code></p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">v116</span> <span class="o">=</span> <span class="p">(</span><span class="n">__int64</span> <span class="p">(</span><span class="kr">__fastcall</span> <span class="o">*</span><span class="p">)(</span><span class="n">_QWORD</span><span class="p">,</span> <span class="kt">signed</span> <span class="n">__int64</span><span class="p">))((</span><span class="n">__int64</span> <span class="p">(</span><span class="kr">__fastcall</span> <span class="o">*</span><span class="p">)(</span><span class="n">__int64</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="p">))((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">v109</span> <span class="o">+</span> <span class="o">*</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="o">*</span><span class="p">)((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">v109</span><span class="p">[</span><span class="o">*</span><span class="p">(</span><span class="kt">unsigned</span> <span class="kr">__int16</span> <span class="o">*</span><span class="p">)((</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">v109</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">v111</span> <span class="o">+</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)</span><span class="n">v110</span><span class="p">[</span><span class="mi">9</span><span class="p">])]</span> <span class="o">+</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)</span><span class="n">v110</span><span class="p">[</span><span class="mi">7</span><span class="p">])))(</span> <span class="n">module_addr</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">proc_name</span><span class="p">);</span> <span class="c1">// GetProcAddr
+</span><span class="k">if</span> <span class="p">(</span> <span class="n">v116</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">len_1</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="n">i64</span><span class="p">;</span>
+    <span class="k">do</span>
+      <span class="o">++</span><span class="n">len_1</span><span class="p">;</span>
+    <span class="k">while</span> <span class="p">(</span> <span class="n">input</span><span class="p">[</span><span class="n">len_1</span><span class="p">]</span> <span class="p">);</span>
+    <span class="n">critical</span> <span class="o">=</span> <span class="n">v116</span><span class="p">(</span><span class="mi">0</span><span class="n">i64</span><span class="p">,</span> <span class="n">len_1</span><span class="p">);</span>
+<span class="p">}</span>
+<span class="k">else</span>
+<span class="p">{</span>
+    <span class="c1">//...大量垃圾代码
+</span><span class="p">}</span>
+<span class="k">if</span> <span class="p">(</span> <span class="n">critical</span> <span class="o">&gt;=</span> <span class="mi">0</span> <span class="p">)</span>
+<span class="p">{</span>
+    <span class="c1">//错误
+</span><span class="p">}</span>
+<span class="k">else</span>
+<span class="p">{</span>
+    <span class="c1">//正确
+</span><span class="p">}</span>
+</code></pre></div>
+<p>动态调试，发现call的函数是<code class="prettyprint">GetProcAddr</code>。然后critical是关键，动态调试改eflags发现后面如果<code class="prettyprint">critical&lt;0</code>，可以显示正确信息。而如果<code class="prettyprint">GetProcAddr</code>返回<code class="prettyprint">NULL</code>，else分支中永远会产生<code class="prettyprint">&gt;=0</code>的<code class="prettyprint">critical</code>值，所以明显是要给个能用的dll名和相应的函数名，使得其调用返回负数。</p>
+
+<p>所以flag大概应该是<code class="prettyprint">KXCTF20189AAAAA9XXXXXXXXXXXXX9</code>。</p>
+
+<p>但是，windows的API，一般都是返回0或正的，错误返回负那是Linux的API。这里我又卡了很久，想了好多种方法，最后决定还是猜一猜。首先dll名要是5的长度，第一个想到的就是<code class="prettyprint">ntdll.dll</code>，然后去<code class="prettyprint">System32</code>目录下找，发现还有一个是<code class="prettyprint">wow64.dll</code>，其他的感觉有点偏，应该不会用上（目前先这么猜</p>
+
+<p>然后把所有长度为13的导出函数弄下来，我用的是IDA（LordPE啥的并没有办法复制。。。</p>
+
+<p>然后通过check 4的那个hash值，来判断。（就先不管负不负了</p>
+
+<p>然后注意，windows文件系统不分大小写，所以<code class="prettyprint">ntdll</code>或者<code class="prettyprint">NTDLL</code>甚至<code class="prettyprint">NtDlL</code>都可以，这个坑了我很久，也是后面才想到的。</p>
+
+<p>具体爆破代码</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">funcs</span><span class="p">[</span><span class="mi">81</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span> <span class="s">"TppTimerpFree"</span><span class="p">,</span><span class="s">"TpReleaseWork"</span><span class="p">,</span><span class="s">"TpReleaseWait"</span><span class="p">,</span><span class="s">"RtlAreBitsSet"</span><span class="p">,</span><span class="s">"LdrpUnloadDll"</span><span class="p">,</span><span class="s">"LdrpSnapThunk"</span><span class="p">,</span><span class="s">"RtlUnlockHeap"</span><span class="p">,</span><span class="s">"RtlLoadString"</span><span class="p">,</span><span class="s">"TppTimerAlloc"</span><span class="p">,</span><span class="s">"EtwEventWrite"</span><span class="p">,</span><span class="s">"RtlStartRXact"</span><span class="p">,</span><span class="s">"RtlAbortRXact"</span><span class="p">,</span><span class="s">"TpWaitForWait"</span><span class="p">,</span><span class="s">"RealSuccessor"</span><span class="p">,</span><span class="s">"RebalanceNode"</span><span class="p">,</span><span class="s">"RtlGetVersion"</span><span class="p">,</span><span class="s">"RtlpNtOpenKey"</span><span class="p">,</span><span class="s">"RtlCopyString"</span><span class="p">,</span><span class="s">"RtlSetAllBits"</span><span class="p">,</span><span class="s">"RtlFreeHandle"</span><span class="p">,</span><span class="s">"ZwQueryObject"</span><span class="p">,</span><span class="s">"NtOpenProcess"</span><span class="p">,</span><span class="s">"NtOpenSection"</span><span class="p">,</span><span class="s">"ZwCreateEvent"</span><span class="p">,</span><span class="s">"ZwSetValueKey"</span><span class="p">,</span><span class="s">"NtCancelTimer"</span><span class="p">,</span><span class="s">"ZwAccessCheck"</span><span class="p">,</span><span class="s">"NtAlertThread"</span><span class="p">,</span><span class="s">"NtCompactKeys"</span><span class="p">,</span><span class="s">"NtCompressKey"</span><span class="p">,</span><span class="s">"ZwConnectPort"</span><span class="p">,</span><span class="s">"ZwCreateTimer"</span><span class="p">,</span><span class="s">"NtCreateToken"</span><span class="p">,</span><span class="s">"ZwFilterToken"</span><span class="p">,</span><span class="s">"ZwOpenSession"</span><span class="p">,</span><span class="s">"ZwQueryEaFile"</span><span class="p">,</span><span class="s">"ZwQueryMutant"</span><span class="p">,</span><span class="s">"NtRequestPort"</span><span class="p">,</span><span class="s">"NtSetUuidSeed"</span><span class="p">,</span><span class="s">"ZwStopProfile"</span><span class="p">,</span><span class="s">"ZwUnloadKeyEx"</span><span class="p">,</span><span class="s">"DbgBreakPoint"</span><span class="p">,</span><span class="s">"DebugService2"</span><span class="p">,</span><span class="s">"RtlFillMemory"</span><span class="p">,</span><span class="s">"RtlZeroMemory"</span><span class="p">,</span><span class="s">"StringCbCopyW"</span><span class="p">,</span><span class="s">"RtlRemoteCall"</span><span class="p">,</span><span class="s">"LdrpCreateKey"</span><span class="p">,</span><span class="s">"PfxFindPrefix"</span><span class="p">,</span><span class="s">"PfxInitialize"</span><span class="p">,</span><span class="s">"IsTimeExpired"</span><span class="p">,</span><span class="s">"WaitForWerSvc"</span><span class="p">,</span><span class="s">"WerpProcessId"</span><span class="p">,</span><span class="s">"DbgUiContinue"</span><span class="p">,</span><span class="s">"RtlpLockStack"</span><span class="p">,</span><span class="s">"RtlApplyRXact"</span><span class="p">,</span><span class="s">"TpReleasePool"</span><span class="p">,</span><span class="s">"TpWaitForWork"</span><span class="p">,</span><span class="s">"LdrReadMemory"</span><span class="p">,</span><span class="s">"ResCHitsFlush"</span><span class="p">,</span><span class="s">"RtlCreateHeap"</span><span class="p">,</span><span class="s">"RtlIdnToAscii"</span><span class="p">,</span><span class="s">"RtlpTpIoAlloc"</span><span class="p">,</span><span class="s">"LdrResRelease"</span><span class="p">,</span><span class="s">"Wow64LogPrint"</span><span class="p">,</span><span class="s">"NameToOrdinal"</span><span class="p">,</span><span class="s">"Wow64FreeHeap"</span><span class="p">,</span><span class="s">"whNtWriteFile"</span><span class="p">,</span><span class="s">"whNtReplyPort"</span><span class="p">,</span><span class="s">"whNtCreateKey"</span><span class="p">,</span><span class="s">"whNtOpenEvent"</span><span class="p">,</span><span class="s">"whNtDeleteKey"</span><span class="p">,</span><span class="s">"whNtLoadKeyEx"</span><span class="p">,</span><span class="s">"whNtOpenKeyEx"</span><span class="p">,</span><span class="s">"whNtOpenTimer"</span><span class="p">,</span><span class="s">"whNtRenameKey"</span><span class="p">,</span><span class="s">"whNtSaveKeyEx"</span><span class="p">,</span><span class="s">"whNtSetEaFile"</span><span class="p">,</span><span class="s">"whNtTestAlert"</span><span class="p">,</span><span class="s">"whNtUnloadKey"</span><span class="p">,</span><span class="s">"Wow64pLongJmp"</span> <span class="p">};</span>
+<span class="k">const</span> <span class="kt">char</span><span class="o">*</span> <span class="n">libs</span><span class="p">[]</span> <span class="o">=</span> <span class="p">{</span> <span class="s">"NTDLL"</span><span class="p">,</span> <span class="s">"WOW64"</span> <span class="p">};</span>
+<span class="kt">char</span> <span class="n">flag</span><span class="p">[</span><span class="mi">31</span><span class="p">]</span> <span class="o">=</span> <span class="s">"KXCTF20189AAAAA9XXXXXXXXXXXXX9"</span><span class="p">;</span>
+<span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">l</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">l</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">;</span> <span class="n">l</span><span class="o">++</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">memcpy</span><span class="p">(</span><span class="n">flag</span> <span class="o">+</span> <span class="mi">10</span><span class="p">,</span> <span class="n">libs</span><span class="p">[</span><span class="n">l</span><span class="p">],</span> <span class="mi">5</span><span class="p">);</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">b</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">b</span> <span class="o">&lt;</span> <span class="mi">32</span><span class="p">;</span> <span class="n">b</span><span class="o">++</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">s</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">s</span> <span class="o">&lt;</span> <span class="mi">5</span><span class="p">;</span> <span class="n">s</span><span class="o">++</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">b</span> <span class="o">&amp;</span> <span class="p">(</span><span class="mi">1</span> <span class="o">&lt;&lt;</span> <span class="n">s</span><span class="p">))</span>
+            <span class="p">{</span>
+                <span class="n">flag</span><span class="p">[</span><span class="mi">10</span> <span class="o">+</span> <span class="n">s</span><span class="p">]</span> <span class="o">|=</span> <span class="mh">0x20</span><span class="p">;</span><span class="c1">//转成小写
+</span>            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mi">64</span><span class="p">;</span> <span class="n">i</span><span class="o">++</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">memcpy</span><span class="p">(</span><span class="n">flag</span> <span class="o">+</span> <span class="mi">16</span><span class="p">,</span> <span class="n">funcs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">13</span><span class="p">);</span>
+            <span class="k">if</span> <span class="p">(</span><span class="n">sub_140002AC0</span><span class="p">(</span><span class="n">flag</span><span class="p">)</span> <span class="o">==</span> <span class="mi">5728707748789076223</span><span class="n">i64</span><span class="p">)</span>
+            <span class="p">{</span>
+                <span class="n">printf</span><span class="p">(</span><span class="s">"%s"</span><span class="p">,</span> <span class="n">flag</span><span class="p">);</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>最终输出为<code class="prettyprint">KXCTF20189NTDLL9DbgUiContinue9</code></p>
+
+<h1 id="0x03">0x03 多解的可能性</h1>
+
+<p>实际上，flag并不一定是要我所说的那种形式，<code class="prettyprint">KXCTF20189AAAAA9...9...</code>也是有可能的，其中函数名长度小于13，然后后面的找一个序列使得check 4哈希碰撞，毕竟那么多长度为5的dll，还有那么多导出函数，有没有这种可能性呢？（我是懒的弄了</p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

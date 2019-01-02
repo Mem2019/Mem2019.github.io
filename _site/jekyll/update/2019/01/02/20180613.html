@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>20180613</title>
+  <meta name="description" content="0x00 前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/20180613.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">20180613</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h1 id="0x00">0x00 前言</h1>
+
+<p>注意：此解法非常暴力，如果你想通过这道题学习神经网络相关的数学与算法知识，建议点击返回并查看其它大佬的WP。所以请版主大大千万别加精，要脸。。。</p>
+
+<h1 id="0x01">0x01 字符长度与范围</h1>
+
+<p>长度限定为10，但他计算长度的方法非常的魔性，我是没看懂，是猜+调试弄出来的。</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="n">iter</span> <span class="o">=</span> <span class="n">input</span><span class="p">;</span>
+<span class="k">do</span>
+<span class="p">{</span>
+    <span class="n">v5</span> <span class="o">=</span> <span class="o">*</span><span class="p">(</span><span class="n">_DWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">iter</span><span class="p">;</span>
+    <span class="n">iter</span> <span class="o">+=</span> <span class="mi">4</span><span class="p">;</span>
+    <span class="n">v6</span> <span class="o">=</span> <span class="o">~</span><span class="n">v5</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">v5</span> <span class="o">-</span> <span class="mh">0x1010101</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x80808080</span><span class="p">;</span>
+<span class="p">}</span>
+<span class="k">while</span> <span class="p">(</span> <span class="o">!</span><span class="n">v6</span> <span class="p">);</span>    <span class="c1">// iter = length as dword + base pointer, round to 4
+</span><span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="p">(</span><span class="o">~</span><span class="n">v5</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">v5</span> <span class="o">-</span> <span class="mh">0x1010101</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x8080</span><span class="p">)</span> <span class="p">)</span>
+    <span class="n">v6</span> <span class="o">&gt;&gt;=</span> <span class="mi">16</span><span class="p">;</span>
+<span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="p">(</span><span class="o">~</span><span class="n">v5</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">v5</span> <span class="o">-</span> <span class="mh">0x1010101</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0x8080</span><span class="p">)</span> <span class="p">)</span>
+    <span class="n">iter</span> <span class="o">+=</span> <span class="mi">2</span><span class="p">;</span>
+<span class="k">if</span> <span class="p">(</span> <span class="o">&amp;</span><span class="n">iter</span><span class="p">[</span><span class="o">-</span><span class="n">__CFADD__</span><span class="p">((</span><span class="n">_BYTE</span><span class="p">)</span><span class="n">v6</span><span class="p">,</span> <span class="p">(</span><span class="n">_BYTE</span><span class="p">)</span><span class="n">v6</span><span class="p">)</span> <span class="o">-</span> <span class="mi">3</span><span class="p">]</span> <span class="o">-</span> <span class="n">input</span> <span class="o">!=</span> <span class="mi">10</span> <span class="p">)</span><span class="c1">// length == 10
+</span><span class="p">{</span>
+      <span class="c1">//error
+</span><span class="p">}</span>
+</code></pre></div>
+<p>然后是字符范围，要求<code class="prettyprint">[A-F0-9]</code>，并且会通过这个把它转换成数值</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="k">if</span> <span class="p">(</span> <span class="p">(</span><span class="kt">unsigned</span> <span class="kt">int</span><span class="p">)</span><span class="n">capitical_hex_to_num</span><span class="p">(</span><span class="n">input</span><span class="p">,</span> <span class="o">&amp;</span><span class="n">input_num</span><span class="p">,</span> <span class="mi">10</span><span class="p">)</span> <span class="o">!=</span> <span class="mi">5</span> <span class="p">)</span>
+<span class="p">{</span>
+      <span class="c1">//error
+</span><span class="p">}</span>
+</code></pre></div>
+<p>如果范围不对，<code class="prettyprint">capitical_hex_to_num</code>会返回0</p>
+
+<p>然后在后面，有一个<code class="prettyprint">input_num &amp; 0xF0000</code>就会错误的检查，最后得出flag为<code class="prettyprint">XXXXX0XXXX</code>的形式，其中<code class="prettyprint">X</code>为<code class="prettyprint">[0-9A-F]</code></p>
+
+<p>PS：这个坑了我整整一天，一直看错了以为flag是<code class="prettyprint">XXXX00XXXX</code>，然后一直跑不出解，还以为是反调试了，调试的时候的训练数据跟不调试的不一样，还对程序做了补丁输出了所有不加调试时候的数据，然后发现一样怀疑人生。。。也还是自己犯傻了。。。</p>
+
+<h1 id="0x02">0x02 暴力破解</h1>
+
+<p>暴力破解也很简单了，基本上就是把前面三个函数nop掉，因为要么会crash（可能是因为爆破只调用了main，没有调用程序的预处理，而<code class="prettyprint">0x401F00</code>很可能是编译器生成的call，要么会太慢（训练的时候用<code class="prettyprint">GetTickCount</code>规定了必须1秒）。然后，把预先训练好的数据dump下来，直接<code class="prettyprint">memcpy</code>过去，接下来就是暴力跑了。。。</p>
+
+<p>代码轻喷。。。</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;stdint.h&gt;
+#include &lt;windows.h&gt;
+#include &lt;set&gt;
+#include &lt;string&gt;
+#include &lt;vector&gt;
+</span><span class="n">using</span> <span class="n">namespace</span> <span class="n">std</span><span class="p">;</span>
+<span class="kt">char</span> <span class="n">train_res</span><span class="p">[]</span> <span class="o">=</span>
+<span class="s">"</span><span class="se">\xF4\xC9\x5C\x82\x72\xA7\xDB\x3F\x77\x7A\x2F\xBB\xCA\xE6\xE3\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x34\xD1\x6F\x19\xAF\x87\xDA\x3F\x4A\x15\xD0\x5D\xF6\x81\xE0\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x83\xA2\x31\xA1\x75\xBF\xE3\x3F\x04\xE7\x56\x11\xA2\x86\xE3\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x15\x00\xFE\x2F\x52\x6F\xE2\x3F\x96\x58\x2D\x82\x5F\xF8\xC8\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x24\xD6\xB9\xC5\x92\x3F\xD9\x3F\xA1\x0B\xB3\x77\xBA\x3B\xD7\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x6E\x63\x4B\x28\xE7\x9A\xDF\x3F\xEA\xBD\xB0\x74\xF5\xB6\xD4\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xA8\x56\x38\xD4\xDC\x6E\xD4\x3F\xD7\x4F\x67\x78\xF7\x12\xD9\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x83\x67\x73\x66\x40\xD2\xE2\x3F\x26\x31\x9B\x7B\xB6\xDA\xE0\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x14\x44\x18\xEE\xC1\x86\xDF\x3F\xDF\x3B\xA1\xA7\x78\xDB\xDF\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xB0\xEC\x02\x4D\xD9\x00\xE5\x3F\x00\x00\x00\x00\x00\x00\x00\x00</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x5D\x4B\x9C\x75\x74\x1C\xD6\x3E\xA4\xAF\x66\xC2\x19\x31\xF1\x3E</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x36\x49\x98\x5F\xD7\xAF\xEF\xBE\xDE\x98\x79\xC7\xED\xC6\x08\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x4C\x11\x79\x36\x80\x70\xEE\x3E\x58\x85\x25\x23\x23\xB3\x07\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xC4\x2E\xBF\x18\xC5\xCD\xFC\x3E\x22\x50\x8A\x2D\x82\x6F\x16\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x12\x26\x2B\x98\xC1\xF0\x06\xBF\x69\x75\xF2\x53\xBF\xDD\x21\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xBC\xEB\x0E\x22\x10\xFB\xE0\xBE\x24\xAE\x9C\x94\xE7\x8F\xFA\xBE</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x9C\x6B\x18\x94\x5F\xEA\x06\xBF\xB6\x98\xD6\x64\xEA\xD4\x21\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x2D\x5A\x76\x46\xB8\xA4\xE9\xBE\x7E\x3C\x5A\x13\x9D\x29\x04\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xF2\x75\x33\xC1\x9B\xA0\xF9\x3E\x3C\x94\x1A\x69\x06\xF0\x13\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x6E\x96\x13\xBE\x08\x92\x0D\x3F\x7A\x11\x8B\x21\xE3\x0A\x27\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x66\xB1\x8D\x73\x1C\x9E\xDD\xBE\xE2\xCD\xA5\x94\xA5\x12\xF7\xBE</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x99\x3C\xC8\x3D\x25\x7C\x07\x3F\x69\xC2\x05\xE1\x1E\x57\x22\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xA1\xF1\x69\x15\x8E\xC0\xE4\xBE\xBE\xDB\x9A\x16\xA3\x23\x00\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x1F\xCF\xF5\xBF\x2A\x0E\x06\x3F\x03\x3C\x17\x2D\x45\x2C\x21\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xDB\xA7\x65\x6A\x22\xAE\xFB\xBE\x67\x24\xFA\x66\x8C\x8D\x15\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x23\x0F\xE6\x35\x6D\xB5\xDB\xBE\xA7\x08\x93\x46\x8B\x97\xF5\xBE</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x25\xFE\xFD\x27\x74\x42\xF8\xBE\x33\xC1\xB6\xC9\x82\xE0\x12\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xBC\xB4\x2E\x5D\xD2\xE7\xEB\xBE\x82\x1C\x89\x45\x5E\xBB\x05\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xA6\xBE\xF7\x12\x08\x6B\x35\xBF\xA3\xE0\x65\xD5\x4F\xB4\x3E\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xBE\xD3\xEE\x17\x42\x24\x34\xBF\x07\x82\x9A\x18\x24\x82\x39\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xEC\x5F\x67\xA5\x88\x0F\x3E\xBF\x77\xF7\x1E\xCC\x62\x2E\x3E\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xB8\xF5\x6C\x6B\xE8\xF8\x3B\xBF\xF9\x8A\x5C\xE3\x12\xD5\x22\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xDF\xEC\x0B\xC7\x0F\x65\x33\xBF\xDA\x29\x3D\xC1\x29\xAD\x31\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xA2\x68\xE8\x18\xCB\xB9\x37\xBF\x8F\xA5\x79\xD5\x7C\x53\x2F\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xEB\xA5\x44\xFD\x59\x90\x2F\xBF\x98\x57\xA7\x97\x55\x1C\x33\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xBD\xD8\x4A\xB5\xFE\xAF\x3C\xBF\x06\x8A\xCE\xC8\x8E\xFF\x39\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xAC\x2D\x09\xFE\x37\xF4\x37\xBF\xB6\x4A\xFF\x23\xCB\x9D\x38\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xC1\xDB\x56\x91\x5E\x64\xF0\xBF\x4B\x00\xE0\x6A\x9C\xB5\xB5\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x9A\x5F\x0F\xEF\x9D\xFD\xE0\xBF\x53\xE8\x24\x3E\xE2\x85\xE6\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x12\x75\x2F\xA7\xBC\xDE\xBE\xBF\x8C\xCB\xB3\xA1\x39\x0B\xD4\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x3C\x20\x0F\x64\x3F\x7D\xE8\xBF\x29\x95\x3E\xAD\xDC\xB9\xD5\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xC3\xFD\xBC\x83\xF9\x27\xDA\x3F\xAE\x9E\x58\xD9\xE5\x2B\xD6\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x17\xB7\x36\x9A\xB6\x81\xE5\xBF\x52\x72\x52\xBF\x1B\x80\xE6\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xCC\x99\xFA\xA9\x2E\xAE\xDE\x3F\x36\xCF\x49\x0A\xC0\x90\xC2\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x6E\xDB\xE9\xAC\xDE\x42\xE8\xBF\xE8\x64\x44\x54\x05\x0F\xF3\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x84\x09\x49\xDA\x1F\xEC\xE6\xBF\x07\x3E\xA9\xF5\xE2\xC4\xC7\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xF9\xB6\x2F\x2E\xB3\xD6\xD8\xBF\x68\x94\x7C\x85\x6F\x41\xDC\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xD9\xB8\xFE\x71\x0F\xF9\xE7\x3F\xF4\xFB\xF8\x4E\x5C\xCC\xD2\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x2B\xCD\x51\x0A\x16\xF8\xD1\xBF\x05\x6C\xB7\xE8\x2B\x20\xE5\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xA4\xC5\x7D\xC9\x46\x3B\xF2\xBF\xEB\xDD\x59\x93\x2B\xE4\xD7\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x65\x0F\x01\x0C\x0E\xC9\xD7\xBF\xDC\x1A\x66\x09\xAE\x8A\xD4\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x1C\x77\x3B\x01\x7C\x2D\xCD\x3F\xB2\x08\x56\xDF\x0D\x52\xD2\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x8A\x24\xE7\xD4\x1E\xBF\xE4\xBF\x18\x8A\xB9\x5F\xAD\xEB\xD5\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xC8\x0B\xD4\xE1\xDB\x13\xBA\x3F\x1F\x92\x37\x8B\x84\x23\xB1\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x3C\x48\xB7\x1B\xD7\x93\xE9\xBF\x8F\x8D\xD3\xE0\x92\xBB\xD1\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x6F\xFF\x93\x81\xBB\x91\xBE\xBF\x2E\x5B\x58\x7B\x7D\x4F\xD7\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x40\x0B\x20\xEE\x51\x71\xD5\xBF\xB8\x8E\x66\x55\x54\xB8\xE3\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x89\x96\xC2\x58\xFC\x9C\xF0\x3F\xA6\x2E\xA6\x15\xD9\xBA\xC8\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x67\x33\xD4\xA5\x7B\x07\xF0\x3F\x80\xA7\x9F\x61\x11\x61\xDC\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x64\xB0\xA1\x0A\x66\x47\xE2\xBF\x4D\xD5\xEF\x9B\x58\xE4\xF5\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xB1\xB5\x6D\x82\x74\x52\xC4\x3F\x73\x1D\xB8\x02\xA3\x73\xF2\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x63\x4D\x02\x27\xBD\x3A\xD0\x3F\x95\x6D\x38\x89\xE6\xA4\xEF\xBF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xA2\x26\x9C\xE5\xB5\x90\xE3\x3F\x71\x1D\xD9\x59\xDD\x17\xC3\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x0D\xEB\x20\x92\x6F\x9A\xE0\x3F\x86\x2E\x01\x8E\x8E\x1B\xD3\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x7B\x14\xAE\x47\xE1\x7A\x84\x3F\xB8\x1E\x85\xEB\x51\xB8\x9E\x3F</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x52\xB8\x1E\x85\xEB\x51\x33\x40\x00\x00\x00\x00\x00\x00\x00\x00</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\x7B\x14\xAE\x47\xE1\xFA\x23\x40\x7B\x14\xAE\x47\xE1\xFA\x23\x40</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xA4\x70\x3D\x0A\xD7\xA3\xD0\x3F\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF</span><span class="s">"</span>
+<span class="s">"</span><span class="se">\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x02</span><span class="s">"</span><span class="p">;</span>
+
+<span class="n">set</span><span class="o">&lt;</span><span class="n">string</span><span class="o">&gt;</span> <span class="n">outputs</span><span class="p">;</span>
+<span class="n">vector</span><span class="o">&lt;</span><span class="kt">uint32_t</span><span class="o">&gt;</span> <span class="n">goons</span><span class="p">;</span>
+<span class="kt">char</span><span class="o">*</span> <span class="n">module_addr</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+<span class="kt">size_t</span> <span class="n">main_off</span> <span class="o">=</span> <span class="mh">0x3880</span><span class="p">;</span>
+<span class="kt">size_t</span> <span class="n">printf_iat_off</span> <span class="o">=</span> <span class="mh">0xD3B4</span><span class="p">;</span>
+<span class="kt">size_t</span> <span class="n">scanf_iat_off</span> <span class="o">=</span> <span class="mh">0xD3C4</span><span class="p">;</span>
+<span class="n">bool</span> <span class="n">success</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+<span class="n">bool</span> <span class="n">goon</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+<span class="kt">uint32_t</span> <span class="n">number_now</span><span class="p">;</span>
+<span class="k">typedef</span> <span class="kt">int</span> <span class="p">(</span><span class="kr">__cdecl</span> <span class="o">*</span><span class="n">main_t</span><span class="p">)();</span>
+<span class="n">main_t</span> <span class="n">program_main</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">check</span><span class="p">(</span><span class="kt">uint32_t</span> <span class="n">a</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">number_now</span> <span class="o">=</span> <span class="n">a</span><span class="p">;</span>
+    <span class="n">memcpy</span><span class="p">(</span><span class="n">module_addr</span> <span class="o">+</span> <span class="mh">0xC980</span><span class="p">,</span> <span class="n">train_res</span><span class="p">,</span> <span class="k">sizeof</span><span class="p">(</span><span class="n">train_res</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">);</span>
+    <span class="n">program_main</span><span class="p">();</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">success</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%hx"</span><span class="p">,</span> <span class="p">(</span><span class="kt">uint16_t</span><span class="p">)(</span><span class="n">number_now</span> <span class="o">&amp;</span> <span class="mh">0xffff</span><span class="p">));</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"00"</span><span class="p">);</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"%hx"</span><span class="p">,</span> <span class="p">(</span><span class="kt">uint16_t</span><span class="p">)(</span><span class="n">number_now</span> <span class="o">&gt;&gt;</span> <span class="mi">16</span><span class="p">));</span>
+        <span class="n">system</span><span class="p">(</span><span class="s">"pause"</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">goon</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="c1">//goons.push_back(a);
+</span>        <span class="n">printf</span><span class="p">(</span><span class="s">"%.8X</span><span class="se">\n</span><span class="s">"</span><span class="p">,</span> <span class="n">a</span><span class="p">);</span>
+        <span class="n">goon</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="kr">__fastcall</span> <span class="nf">hook_printf</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">content</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">strcmp</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="s">"Congratulation</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">success</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="k">else</span> <span class="k">if</span> <span class="p">(</span><span class="n">strcmp</span><span class="p">(</span><span class="n">content</span><span class="p">,</span> <span class="s">"Come on, go on</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">goon</span> <span class="o">=</span> <span class="nb">true</span><span class="p">;</span>
+    <span class="p">}</span>
+    <span class="c1">//outputs.insert(content);
+</span>    <span class="c1">//printf("%s\n", content);
+</span><span class="p">}</span>
+
+<span class="kt">void</span> <span class="kr">__fastcall</span> <span class="nf">hook_scanf</span><span class="p">(</span><span class="kt">char</span><span class="o">*</span> <span class="n">format</span><span class="p">,</span> <span class="kt">char</span><span class="o">*</span> <span class="n">buf</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">sprintf_s</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="mi">5</span> <span class="p">,</span> <span class="s">"%.4hX"</span><span class="p">,</span> <span class="p">(</span><span class="kt">uint16_t</span><span class="p">)(</span><span class="n">number_now</span> <span class="o">&amp;</span> <span class="mh">0xffff</span><span class="p">));</span>
+    <span class="n">buf</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="sc">'E'</span><span class="p">;</span>
+    <span class="n">buf</span><span class="p">[</span><span class="mi">5</span><span class="p">]</span> <span class="o">=</span> <span class="sc">'0'</span><span class="p">;</span>
+    <span class="n">sprintf_s</span><span class="p">(</span><span class="n">buf</span> <span class="o">+</span> <span class="mi">6</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="s">"%.4hX"</span><span class="p">,</span> <span class="p">(</span><span class="kt">uint16_t</span><span class="p">)(</span><span class="n">number_now</span> <span class="o">&gt;&gt;</span> <span class="mi">16</span><span class="p">));</span>
+    <span class="c1">//printf("%s\n", buf);
+</span><span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">init</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">module_addr</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span><span class="o">*</span><span class="p">)</span><span class="n">LoadLibraryA</span><span class="p">(</span><span class="s">"NNCrackme.dll"</span><span class="p">);</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">module_addr</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"fail to open dll</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="n">system</span><span class="p">(</span><span class="s">"pause"</span><span class="p">);</span>
+        <span class="n">exit</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="o">*</span><span class="p">(</span><span class="kt">void</span><span class="o">**</span><span class="p">)(</span><span class="n">module_addr</span> <span class="o">+</span> <span class="n">printf_iat_off</span><span class="p">)</span> <span class="o">=</span> <span class="n">hook_printf</span><span class="p">;</span>
+    <span class="o">*</span><span class="p">(</span><span class="kt">void</span><span class="o">**</span><span class="p">)(</span><span class="n">module_addr</span> <span class="o">+</span> <span class="n">scanf_iat_off</span><span class="p">)</span> <span class="o">=</span> <span class="n">hook_scanf</span><span class="p">;</span>
+    <span class="n">program_main</span> <span class="o">=</span> <span class="p">(</span><span class="n">main_t</span><span class="p">)(</span><span class="n">module_addr</span> <span class="o">+</span> <span class="n">main_off</span><span class="p">);</span>
+<span class="p">}</span>
+
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">init</span><span class="p">();</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">i</span> <span class="o">=</span> <span class="mh">0x00400000</span><span class="p">;</span> <span class="n">i</span> <span class="o">&lt;</span> <span class="mh">0x100000000</span><span class="p">;</span> <span class="n">i</span><span class="o">+=</span><span class="mh">0x1000000</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="c1">//printf("%zx\n", i);
+</span>        <span class="k">for</span> <span class="p">(</span><span class="kt">size_t</span> <span class="n">j</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span> <span class="n">j</span> <span class="o">&lt;</span> <span class="mh">0x100000</span><span class="p">;</span> <span class="n">j</span><span class="o">++</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">check</span><span class="p">((</span><span class="kt">uint32_t</span><span class="p">)(</span><span class="n">i</span> <span class="o">+</span> <span class="n">j</span><span class="p">));</span>
+        <span class="p">}</span>
+    <span class="p">}</span>
+    <span class="k">for</span> <span class="p">(</span><span class="kt">uint32_t</span> <span class="n">g</span> <span class="o">:</span> <span class="n">goons</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"0x%.8X,"</span><span class="p">,</span> <span class="n">g</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="n">system</span><span class="p">(</span><span class="s">"pause"</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>然后这个其实是有猜的成分，之前我是从<code class="prettyprint">0-0xffffffff</code>然后开12个进程一直在跑的，然后发现好像只有<code class="prettyprint">0xXX4XXXXX</code>会产生go on的信息，所以索性换成了以上的爆破方式，结果就在E的时候出结果了。。。</p>
+
+<p>然后方法用的是把exe变成dll的老办法，为啥不用unicorn那套东西？因为还在学，没学会（逃</p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

