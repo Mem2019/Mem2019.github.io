@@ -21,3 +21,5 @@ github_username:  jekyll
 markdown: redcarpet
 redcarpet:
     extensions: [ "hard_wrap","autolink", "tables", "strikethrough", "superscript", "with_toc_data", "highlight", "prettify","no_intra_emphasis"]
+
+theme: jekyll-theme-cayman
