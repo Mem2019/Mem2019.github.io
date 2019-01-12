@@ -110,7 +110,7 @@ Then, we may also want to change this line
 setsid /bin/cttyhack setuidgid 0 /bin/sh
 ```
 
-Initially the shell that we can have is the non-root shell, and our purpose of exploitation is to raise the previledge to root. However, here we change the previledge of the initial shell to root directly, which seems to make no sense because why do we need to raise the previledge to root if we already have that in the beginning? Well, this is also to make the debug more convinient. When debugging, we may need to access `/sys/modules/core/section/.text`, which gives the address of the `.text` section of kernel module, and this is important to the debug. But, we can only access it with root shell, so this is the reason why we want the root shell when it starts, and we will pretend we don't have a root shell and still try to get a root shell using our exploit. :)
+Initially the shell that we can have is the non-root shell, and our purpose of exploitation is to raise the previledge to root. However, here we change the previledge of the initial shell to root directly, which seems to make no sense because why do we need to raise the previledge to root if we already have that in the beginning? Well, this is also to make the debug more convinient. When debugging, we may need to access `/sys/module/core/sections/.text`, which gives the address of the `.text` section of kernel module, and this is important to the debug. But, we can only access it with root shell, so this is the reason why we want the root shell when it starts, and we will pretend we don't have a root shell and still try to get a root shell using our exploit. :)
 
 Secondly, we may want to add our exploit into the file system, otherwise we will not have the exploit to run. :)
 
@@ -120,7 +120,7 @@ After modifying the file system, we may recompress the file system using the scr
 ./gen_cpio.sh core.cpio
 ```
 
-The content of the script is also not so hard
+The content of the script is also not so hard. If there is no such script, we can add it manually.
 
 ```bash
 #cat ./gen_cpio.sh
@@ -172,6 +172,8 @@ cat /sys/module/core/sections/.text
 ```
 
 Then switch to gdb, we load the debug info by `add-symbol-file ./core.ko [address obtained above]`. Then we can set the breakpoint easily by typing `b core_read` in gdb. If there is no symbol in the ELF file of Kernel Object, we can only use the offset obtained from IDA to set the breakpoint like this `b *(addr_of_text + offset)`.
+
+If you start gdb without `vmlinux` as argument, you may need `set architecture i386:x86-64:intel` in gdb if it complains that *"Remote 'g' packet reply is too long"*.
 
 ## 0x07 Summary
 
