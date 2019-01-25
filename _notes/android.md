@@ -118,6 +118,93 @@ save secret data in SD card
 4. `Import Project`, select directory `XXX`
 5. Right click `XXX` folder in `project` tab, `Mark Directory As` and `Source Root`
 6. `Tools > Android > Android Device Monitor`
-7. start the emulator
-8. `Run > Edit Configuration > Remote`, set debug port as the one shown in DDMS (or 8700)
-9. start the debug
+7. start the emulator (in `AVD manager`, find the device you want to start)
+8. install the apk by dragging the `.apk` into virtual mobile phone
+9. `Run > Edit Configuration > Remote`, set debug port as the one shown in DDMS (or 8700)
+10. start the debug
+
+# 2
+
+## native lib and kernel
+
+linux kernel: GPL
+
+HAL: not GPL, so manufacture don't need to open source here
+
+## mitigation
+
+`SELinux`: overwrite flag
+
+verfied boot, bootloader locked
+
+`kptr_restrict`: prevent leak kernel function table, overwrite relevant flag
+
+RKP,DFI
+
+## root
+
+root, bootloader, recovery, baseband
+
+## tools
+
+### hook
+
+xposed frida magisk
+
+## attack inferface
+
+local file processing
+
+remote package processing
+
+process communication
+
+### kernel communication
+
+syscall, driver(ioctl syscall)
+
+## fuzz
+
+### AFL
+
+adapt android
+
+### Syzkaller
+
+kernel fuzz
+
+### ASAN SanitizerCoverage
+
+## debug & exploit 1: BlueBorne
+
+`.bss` merge with `.text`
+
+### CVE-2017-0781
+
+off by one
+
+use bluetooth name as payload
+
+heap fengshui
+
+### CVE-2017-0785
+
+SDP
+
+状态混淆
+
+information leak get libc
+
+### CVE-2017-1000250
+
+arbitrary read
+
+## debug & exploit 2: DirtyCow
+
+Copy On Write
+
+mmap, madvice, write
+
+VDSO
+
+patch libc, patch recovery...
