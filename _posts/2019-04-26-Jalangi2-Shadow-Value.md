@@ -30,7 +30,7 @@ However, in Jalangi2, things works differently, here is the part of the source c
 
 ```javascript
 
-	function B(iid, op, left, right, flags) {
+function B(iid, op, left, right, flags) {
 	var bFlags = decodeBitPattern(flags, 3); // [isComputed, isOpAssign, isSwitchCaseComparison]
 	var result, aret, skip = false;
 
