@@ -95,7 +95,7 @@ Finally, we have the file system being decompressed, and it is obvious that the 
 
 You may ask, why do we need to decompress it? Well, the reason is that we need to edit and add files inside this file system. 
 
-Firstly, you may want to edit the file `init`. This is the bash script that will be executed when the OS starts. We want to change some of its content.
+Firstly, you may want to edit the file `/init` or `/etc/init.d/rcS`. This is the bash script that will be executed when the OS starts. We want to change some of its content.
 
 We need to delete the automatic power-off, which makes our debug very inconvinient.
 
@@ -110,7 +110,7 @@ Then, we may also want to change this line
 setsid /bin/cttyhack setuidgid 0 /bin/sh
 ```
 
-Initially the shell that we can have is the non-root shell, and our purpose of exploitation is to raise the previledge to root. However, here we change the previledge of the initial shell to root directly, which seems to make no sense because why do we need to raise the previledge to root if we already have that in the beginning? Well, this is also to make the debug more convinient. When debugging, we may need to access `/sys/module/core/sections/.text`, which gives the address of the `.text` section of kernel module, and this is important to the debug. But, we can only access it with root shell, so this is the reason why we want the root shell when it starts, and we will pretend we don't have a root shell and still try to get a root shell using our exploit. :)
+Initially the shell that we can have is the non-root shell, and our purpose of exploitation is to raise the previledge to root. However, here we change the previledge of the initial shell to root directly, which seems to make no sense because why do we need to raise the previledge to root if we already have that in the beginning? Well, this is also to make the debug more convinient. When debugging, we may need to access `/sys/module/core/sections/.text` or `/proc/kallsyms`, which gives the address of the `.text` section of kernel object module or useful addresses of symbols including functions, and these are important to the debug. But, we can only access it with root shell, so this is the reason why we want the root shell when it starts, and we will pretend we don't have a root shell and still try to get a root shell using our exploit. :)
 
 Secondly, we may want to add our exploit into the file system, otherwise we will not have the exploit to run. :)
 
