@@ -104,6 +104,14 @@ ninja -C out.gn/x64.release
 
 同理最后一个命令改成`ninja -C out.gn/x64.release d8`只编译`d8`。
 
+然后顺便说一下，在执行`gclient sync`的时候，可能会提示这个。
+
+>NOTICE: You have PROXY values set in your environment, but gsutilin depot_tools does not (yet) obey them.
+Also, --no_auth prevents the normal BOTO_CONFIG environmentvariable from being used.
+To use a proxy in this situation, please supply those settingsin a .boto file pointed to by the NO_AUTH_BOTO_CONFIG environmentvariable.
+
+这个无所谓，似乎因为在这里要下载的东西不会被墙，如果哪天这个会导致失败的话就按照这个指示设置一下环境变量，如果可以成功本人也不负责女装。
+
 ## 0x04 启动
 
 ### release
