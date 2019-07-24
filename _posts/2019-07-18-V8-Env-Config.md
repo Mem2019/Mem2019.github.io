@@ -132,3 +132,38 @@ To use a proxy in this situation, please supply those settingsin a .boto file po
 # 运行test.js
 ```
 
+## 0x05 Turbolizer搭建
+
+首先，Ubuntu下默认的apt里面的nodejs不好使，必须得[安装最新版的](https://tecadmin.net/install-latest-nodejs-npm-on-ubuntu/)：
+
+```bash
+sudo apt-get install curl python-software-properties
+curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+sudo apt-get install nodejs
+```
+
+`python-software-properties` 有些情况下他可能会找不到，然后会提示你安装另一个包，如果是这样的话根据提示安装那个包就好了。
+
+然后安装并启动turbolizer
+
+```bash
+cd v8/tools/turbolizer
+npm i
+npm run-script build
+python -m SimpleHTTPServer
+```
+
+接着用chrome浏览器访问`ip:8000`就能用了，这个完全加载好要等一小会，因为如果你看HTTP包的话会发现他会从`cdn.rawgit.com`获取了一个文件，而这个是有点慢的。不过如果开梯子的话就会快多了。
+
+以后如果有空的话我会研究一下弄个docker，这样配置起来就会方便多了。
+
+## 0x06 GDB插件
+
+V8还有一个gdb插件，可以方便GDB调试。具体安装方法很简单了，在文件`~/.gdbinit`最后面加上这两行。
+
+```
+source /path/to/v8/tools/gdbinit
+source /path/to/v8/tools/gdb-v8-support.py
+```
+
+`/path/to/`改成实际放置v8 repo的文件夹绝对路径。
