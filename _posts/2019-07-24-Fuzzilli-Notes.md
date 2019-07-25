@@ -565,7 +565,7 @@ public func mutate(_ program: Program, for fuzzer: Fuzzer) -> Program? {
         let arguments = generateCallArguments(b, n: Int.random(in: 2...6))
         // randomly generate some call arguments
         b.callFunction(f, withArgs: arguments)
-        // 
+        // inserts a callFunction instruction at back
         return b.finish()
     } else {
         return nil
