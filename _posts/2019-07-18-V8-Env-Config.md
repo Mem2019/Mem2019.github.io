@@ -85,7 +85,11 @@ bash
 # 重新开一个bash，这样新的环境变量才会被加载
 fetch v8
 # 下载v8的repo，这个也是需要git代理才能成功下载的
-cd v8 && gclient sync
+cd v8
+git reset --hard [commit hash with vulnerability]
+# 如果编译最新版的话，就不用这行命令
+# 如果是要调洞的话，就要在这里切到有漏洞的那个commit
+gclient sync
 # gclient sync 用来下载一些其他需要的东西，
 # 这个还需要curl的代理，之前也已经在环境变量配置了
 tools/dev/v8gen.py x64.debug
@@ -111,6 +115,21 @@ Also, --no_auth prevents the normal BOTO_CONFIG environmentvariable from being u
 To use a proxy in this situation, please supply those settingsin a .boto file pointed to by the NO_AUTH_BOTO_CONFIG environmentvariable.
 
 这个无所谓，似乎因为在这里要下载的东西不会被墙，如果哪天这个会导致失败的话就按照这个指示设置一下环境变量，如果可以成功本人也不负责女装。
+
+具体说一下吧，首先新建一个`.boto`的文件，比方说放到`/home/[user]/.boto`（当然，user改成你的用户名），里面写
+
+```
+[Boto]
+debug = 0
+num_retries = 10
+
+proxy = [proxy ip]
+proxy_port = [proxy port]
+```
+
+其中IP和port改成你的http代理，跟前面的同理。
+
+然后在`~/.bashrc`最后面加上`export NO_AUTH_BOTO_CONFIG="/home/[user]/.boto"`，然后重启一下bash或者`source ~/.bashrc`加载环境变量。
 
 ## 0x04 启动
 
