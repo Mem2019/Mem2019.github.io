@@ -158,7 +158,7 @@ case IrOpcode::kCheckBounds: {
 }
 ```
 
-By reading codes and comments, I guess by executing `DeferReplacement` the bound check would be eliminated, so I set a breakpoint here to see what happens. The breakpoint is triggered 3 times, for the first 2 times, `lower()` function returns `false` which suggests it is still not `lowering phase` yet (`phase_ == LOWER` gives `false`). For the last time, `lower()` gives `true` but `lowering->poisoning_level_ == PoisoningMitigationLevel::kDontPoison` does not hold. Then I tried to find where such `poisoning_level_ ` comes from. 
+By reading codes and comments, I guess by executing `DeferReplacement` the bound check would be eliminated, so I set a breakpoint here to see what happens. The breakpoint is triggered 3 times, for the first 2 times, `lower()` function returns `false` which suggests it is still not `lowering phase` yet (`phase_ == LOWER` gives `false`). For the last time, `lower()` gives `true` but `lowering->poisoning_level_ == PoisoningMitigationLevel::kDontPoison` does not hold, but the value is `PoisoningMitigationLevel::kPoisonCriticalOnly` instead. Then I tried to find where such `poisoning_level_ ` comes from. 
 
 `lowering` is type `SimplifiedLowering*`, and `poisoning_level_` is passed through constructor as shown:
 
@@ -228,7 +228,7 @@ DEFINE_BOOL(untrusted_code_mitigations, V8_DEFAULT_UNTRUSTED_CODE_MITIGATIONS,
 #undef V8_DEFAULT_UNTRUSTED_CODE_MITIGATIONS
 ```
 
-Therefore, finally it seems that it is a compilation macro that causes the OOB to fail! Then after I changed the codes to make `FLAG_untrusted_code_mitigations` always `false` and recompiled the `d8`, the OOB can be triggered successfully!
+`FLAG_untrusted_code_mitigations` is defined to be `true` only if `DISABLE_UNTRUSTED_CODE_MITIGATIONS` is not set. Therefore, finally it seems that it is a miss of a compilation macro that causes the OOB to fail! Then after I changed the code to make `FLAG_untrusted_code_mitigations` always `false` and recompiled the `d8`, the OOB can be triggered successfully!
 
 ```
 4.4
