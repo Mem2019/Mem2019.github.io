@@ -9,6 +9,8 @@ categories: jekyll update
 
 When I was trying JIT challenge in Google CTF 2018 Final by reading [this article](https://doar-e.github.io/blog/2019/01/28/introduction-to-turbofan/#the-duplicateadditionreducer-challenge), I failed to trigger the OOB vulnerability. After some investigation, I found that it is a compilation flag that causes the bound elimination to be disabled.
 
+The commit hash that I applied the [patch](https://github.com/google/google-ctf/blob/master/2018/finals/pwn-just-in-time/attachments/addition-reducer.patch) on is 60096690102151acdd6a714f15c48ecdf510fc02.
+
 Note: This article is not a complete writeup for this challenge, but a piece of record about my investigation as to why the OOB is not triggered. As for the writeup, read that article I linked above. :)
 
 ## 0x01 PoC Failure
