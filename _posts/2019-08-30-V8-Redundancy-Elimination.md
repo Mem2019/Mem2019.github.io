@@ -199,5 +199,50 @@ case IrOpcode::kCheckMaps: {
 
 What this does is essentially check if `kCheckMaps b` includes `kCheckMaps a`, if so we don't need the `b` because it thinks `b` must hold as long as `a` holds. However, the problem is map of object can actually change during the execution, so even if it could satisfy `a` before, it does not have to satisfy `b` later on. Thus the assumption is wrong, and using this we can have type confusion.
 
+let's see how this function is reduced by `RedundancyElimination`.
+
+```javascript
+function f(o, g)
+{
+    const x = o.x;// = 0xdead;
+    g();
+    o.d = 0x2000;
+}
+for (var i = 0; i < 0x1000; i++)
+{
+    f({x:1,y:2,z:3,l:4,a:5,b:6,c:7,d:8,e:9}, ()=>1);
+    f({x:1,y:2,z:3,l:4,a:5,b:6,c:7,d:8,e:9}, ()=>2);
+    f({x:1,y:2,z:3,l:4,a:5,b:6,c:7,d:8,e:9}, ()=>3);
+}
+```
+
+Since the first phase that use `RedundancyElimination` is `LoadElimination`, we can look at `LoopPeeling` to see the graph before `RedundancyElimination`.
+
+// pic
+
+As we can see, there are 2 `CheckMaps` nodes. Node 34 is effect input of `LoadField[+24]`, and node 37 is effect input of `StoreField[+80]`.
+
+After `LoadElimination` phase, the second `CheckMaps` disappears, so `StoreField[+80]` is executed without checking, which is problematic.
+
+//pic
+
+This is also clear if we look at assembly generated.
+
+```assembly
+call r10 ; call g()
+REX.W movq rax,0x200000000000
+REX.W movq rbx,[rbp+0x18] ; load object pointer
+REX.W movq [rbx+0x4f],rax ; write to +0x50 field
+; clearly there is no check
+```
+
 ### Exploitation
+
+In function `g()`, if we can shrink the size of  `obj`, we can have a out-of-bound write. The idea is to put an array there so that we can rewrite its length field, which gives an array with OOB access.
+ Now the exploitation becomes regular: use a signature array to leak web assembly function address and use`ArrayBuffer` to achieve arbitrary R&W.
+
+The difference is, after shrinking size of `obj`, positions that is originally used to store fields will be filled with `FILLER_TYPE` objects, and it is useless to rewrite these things. Therefore, we need to invoke garbage collection so that these offsets will store interesting data.
+
+Full exploit with comments is [here](https://github.com/Mem2019/Mem2019.github.io/blob/master/codes/v9.js).
+
 
