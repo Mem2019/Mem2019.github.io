@@ -36,9 +36,9 @@ print(f(-0));
 
 Here are graphs before and after `SimplifiedLowring` phase, the critical phase that triggers OOB access.
 
-![](images/expm1-EA.png)
+![](/images/expm1-EA.png)
 
-![](images/expm1-SL.png)
+![](/images/expm1-SL.png)
 
 
 ## 0x01 Array Length Matters
@@ -51,7 +51,7 @@ When `arr = [1.1, 2.2]`, the result is `2.2`, which is non-sense at first glance
 
 But it is clear if we look at turbolizer. This is the graph just after `EscapeAnalysis`, so the critical phase `SimplifiedLowering` that removes bound checking has not been reached yet.
 
-![](images/expm1-arrlen2.png)
+![](/images/expm1-arrlen2.png)
 
 As we can see, instead of accessing array as the result, the code is optimized to a `if-else` statement. In other word, it is optimized to pseudo-code like this: 
 
@@ -68,7 +68,7 @@ Therefore, after `CheckBounds` node is eliminated, and when `tmp==1337`, the res
 
 When `arr = [1.1, 2.2]`, the result is `1.1`. We look at graph just after `EscapeAnalysis` again.
 
-![](images/expm1-arrlen1.png)
+![](/images/expm1-arrlen1.png)
 
 The pseudo-code now becomes this.
 
@@ -131,9 +131,9 @@ print(f(-0));
 
 Let's see what happened.
 
-![](images/expm1-fm1-EA.png)
+![](/images/expm1-fm1-EA.png)
 
-![](images/expm1-fm1-SL.png)
+![](/images/expm1-fm1-SL.png)
 
 Before `SimplifiedLowering`, bound value that `CheckBounds` node is using is`0x7fffffff`, which is`INT_MAX`. Certainly it has no effect and will be eliminated soon in `SimplifiedLowering`. The actual bound checking work is done by `NumberLessThan`, and if this gives `false`, `undefined` will be returned. In `SimplifiedLowering`, such `NumberLessThan` will not be eliminated but will be lowered to `Uint32LessThan`, unlike `CheckBounds` node in the working PoC. In other word, the bound guard will not be eliminated by `SimplifiedLowering` in this case, but just exist in another form.
 
