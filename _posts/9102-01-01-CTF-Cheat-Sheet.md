@@ -90,7 +90,7 @@ asm(pwnlib.shellcraft.amd64.linux.sh())
 ### Header
 
 ```javascript
-function dp(x){%DebugPrint(x);}
+function dp(x){ %DebugPrint(x);}
 const print = console.log;
 const assert = function (b, msg)
 {
