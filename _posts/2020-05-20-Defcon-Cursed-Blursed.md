@@ -1,3 +1,10 @@
+---
+layout: post
+title:  "Defcon CTF Qualifier 2020 Cursed&Blursed"
+date:   2020-05-22 00:00:00 +0000
+categories: jekyll update
+---
+
 ## 0x00 Overview
 
 Last weekend [we](https://r3kapig.com/) participated Defcon CTF 2020 Qualifier and got 9th place finally, my teammates tql. With some help from my teammates, I solved 2 challenges, `cursed` and `blursed`. These 2 challenges are quite interesting, so here is my write-up for it. :)
