@@ -5,6 +5,11 @@ permalink: /about/
 ---
 
 ## Who am I
-A BEng computing undergraduate student at Imperial College London.
-Interested in information security, especially Binary stuff.
-CTF player focusing on Pwn/Rev.
+Alumnus of BEng Computing at Imperial College London;
+
+Computer Security PhD at Indiana University Bloomington;
+
+Member of [r3kapig](https://r3kapig.com/);
+
+Interested in vulnerability, fuzzing, CTF, and so on.
+
