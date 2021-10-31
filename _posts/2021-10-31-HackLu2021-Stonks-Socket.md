@@ -124,5 +124,5 @@ for (size_t i = 0; i < sizeof(a) / sizeof(uintptr_t); i++)
 
 One interesting point to note is that `rip` hijacked is sometimes shift of `&get_root` (e.g. `&get_root << 8`). Possible reason is that `recv` does not necessarily stops at alignment of `8`, so that future alignment might be broken.
 
-The full exploit is [here](https://github.com/Mem2019/Mem2019.github.io/blob/master/codes/18-stonks-socket.c).
+The full exploit is [here](https://github.com/Mem2019/Mem2019.github.io/blob/master/codes/stonks-socket.c).
 
