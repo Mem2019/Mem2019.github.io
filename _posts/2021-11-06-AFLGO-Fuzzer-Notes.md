@@ -335,7 +335,7 @@ for (auto &bb_d_entry : bb_distance) { // iterate each basic block name with bb_
 
 The `for` loop iterate each basic block name with `bb_distance` (we will call them target basic blocks in following). Note that `bb_d_entry.first` that is not in current processing function is simply skipped, so only target basic blocks in current function is processed. Also, if all vertexes of a target basic block name in current function is not reachable by $$n$$, it will also be discarded.
 
-For a target basic block name $T$, its distance $D_{n\rightarrow T}$ can be calculated as follows:
+For a target basic block name $$T$$, its distance $$D_{n\rightarrow T}$$ can be calculated as follows:
 
 $$\large D_{n \rightarrow T} = \frac{\sum_{t \in V_n(T)} \frac{1}{1 + 10 D_{bb}(t) + S_{n \rightarrow t}}}{|V_n(T)|}$$
 
