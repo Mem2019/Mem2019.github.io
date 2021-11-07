@@ -241,11 +241,11 @@ for (vertex_desc n : find_nodes(G, name)) {
 }
 ```
 
-According to code, formula for calculating the call graph distance for a node $n$ (which represents a function) is:
-$$
-\large min_{n}\frac{|T_n|}{\sum_{t \in T_n} \frac{1}{1+S_{n\rightarrow t}}}
-$$
-$min_n$ stands for we want to find the minimum value among all $n$ returned from `find_nodes`, but I think in call graph case there should be at most one vertex being returned; $T_n$ means set of all reachable targets from $n$; $S_{n\rightarrow t}$ means `distances[t]`, which is the minimum distance from $n$ to $t$.
+According to code, formula for calculating the call graph distance for a node $$n$$ (which represents a function) is:
+
+$$\large min_{n}\frac{|T_n|}{\sum_{t \in T_n} \frac{1}{1+S_{n\rightarrow t}}}$$
+
+$$min_n$$ stands for we want to find the minimum value among all $$n$$ returned from `find_nodes`, but I think in call graph case there should be at most one vertex being returned; $$T_n$$ means set of all reachable targets from $$n$$; $$S_{n\rightarrow t}$$ means `distances[t]`, which is the minimum distance from $$n$$ to $$t$$.
 
 ### Basic Block Distance
 
@@ -333,20 +333,19 @@ for (auto &bb_d_entry : bb_distance) { // iterate each basic block name with bb_
 }
 ```
 
-The `for` loop iterate each basic block name with `bb_distance` (we will call them target basic blocks in following). Note that `bb_d_entry.first` that is not in current processing function is simply skipped, so only target basic blocks in current function is processed. Also, if all vertexes of a target basic block name in current function is not reachable by $n$, it will also be discarded.
+The `for` loop iterate each basic block name with `bb_distance` (we will call them target basic blocks in following). Note that `bb_d_entry.first` that is not in current processing function is simply skipped, so only target basic blocks in current function is processed. Also, if all vertexes of a target basic block name in current function is not reachable by $$n$$, it will also be discarded.
 
 For a target basic block name $T$, its distance $D_{n\rightarrow T}$ can be calculated as follows:
-$$
-\large D_{n \rightarrow T} = \frac{\sum_{t \in V_n(T)} \frac{1}{1 + 10 D_{bb}(t) + S_{n \rightarrow t}}}{|V_n(T)|}
-$$
 
-$V_n(T)$ means all basic block vertexes associated with basic block name $T$ that is reachable from starting node $n$; $D_{bb}(t)$ means `bb_distance` of basic block vertex $t$; $S_{n \rightarrow t}$ means the shortest distance from vertex $n$ to vertex $t$ in the control flow graph.
+$$\large D_{n \rightarrow T} = \frac{\sum_{t \in V_n(T)} \frac{1}{1 + 10 D_{bb}(t) + S_{n \rightarrow t}}}{|V_n(T)|}$$
 
-The final target distance of basic block $n$ is calculated as follows:
-$$
-\large min_n \frac{|S_T|}{\sum_{T\in S_T} D_{n \rightarrow T}}
-$$
-$min_n$ means we want the minimum distance among all vertexes returned from `find_node` (e.i. all vertexes with given basic block name); $S_T$ is the set of all names of target basic blocks reachable by $n$ in current processing function.
+$$V_n(T)$$ means all basic block vertexes associated with basic block name $$T$$ that is reachable from starting node $$n$$; $$D_{bb}(t)$$ means `bb_distance` of basic block vertex $$t$$; $$S_{n \rightarrow t}$$ means the shortest distance from vertex $$n$$ to vertex $$t$$ in the control flow graph.
+
+The final target distance of basic block $$n$$ is calculated as follows:
+
+$$\large min_n \frac{|S_T|}{\sum_{T\in S_T} D_{n \rightarrow T}}$$
+
+$$min_n$$ means we want the minimum distance among all vertexes returned from `find_node` (e.i. all vertexes with given basic block name); $$S_T$$ is the set of all names of target basic blocks reachable by $$n$$ in current processing function.
 
 ## 0x03 Others
 
