@@ -1,7 +1,7 @@
 ---
 layout: post
 title:  "CTF Cheat Sheet"
-date:   9102-01-01 00:00:00 +0000
+date:   2333-01-01 00:00:00 +0000
 categories: jekyll update
 ---
 
@@ -342,3 +342,39 @@ void* register_userfault()
 ```
 
 See [userfaultfd.h](https://github.com/Mem2019/Mem2019.github.io/blob/master/codes/userfaultfd.h)
+
+## Dynamic Analysis
+
+### GDB Python
+
+```python
+import gdb
+import struct
+
+u64 = lambda x : struct.unpack("<Q", x)[0]
+p64 = lambda x : struct.pack("<Q", x)
+u32 = lambda x : struct.unpack("<I", x)[0]
+p32 = lambda x : struct.pack("<I", x)
+u16 = lambda x : struct.unpack("<H", x)[0]
+p16 = lambda x : struct.pack("<H", x)
+
+cont = lambda : gdb.execute("c")
+run = lambda : gdb.execute("r")
+
+def set_bp(addr, temporary=True):
+	gdb.execute(("tb" if temporary else "b") + " *%s" % hex(addr))
+
+set_reg = lambda reg, value : gdb.execute("set $%s=%lu" % (reg, value))
+get_reg = lambda reg : gdb.parse_and_eval("$" + reg)
+read_mem = lambda addr, size : gdb.selected_inferior().read_memory(addr, size)
+write_mem = lambda addr, data : gdb.selected_inferior().write_memory(addr, data)
+
+def read_val(addr, size, endian="little"):
+	return int.from_bytes(read_mem(addr, size), endian)
+
+def pop_stack(stack_reg="rsp", size=8, endian="little"):
+	stack = get_reg(stack_reg)
+	ret = read_val(stack, size, endian)
+	set_reg(stack_reg, stack + size)
+	return ret
+```
