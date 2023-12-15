@@ -378,3 +378,150 @@ def pop_stack(stack_reg="rsp", size=8, endian="little"):
 	set_reg(stack_reg, stack + size)
 	return ret
 ```
+
+## Static Analysis
+
+### IDA and Hex Rays
+
+#### Ctree
+
+##### `ctree_visitor_t`
+
+```python
+# Given instruction address `ins_ea`, we can get the function containing it.
+func = idaapi.decompile(idc.get_func_attr(ins_ea, idc.FUNCATTR_START))
+
+# Get function body, with type cinsn_t.
+func.body
+
+# ctree visitor
+class my_ctree_visitor(ida_hexrays.ctree_visitor_t):
+	def __init__(self):
+		super().__init__(ida_hexrays.CV_FAST)
+
+	# `i` is cinsn_t, `e` is `cexpr_t`, these method return 1 for error.
+	def visit_insn(self, i):
+		return 0
+	def visit_expr(self, e):
+		return 0
+
+# Use the visitor to visit a decompiled function.
+my_ctree_visitor().apply_to(func.body, None)
+```
+
+##### `cexpr_t`
+
+```python
+# Given `expr` to be type `cexpr_t`.
+expr
+
+# Get the instruction address corresponding to `expr`.
+expr.ea
+
+# Get the opcode of the expression, which can be one of `ida_hexrays.cot_*`.
+expr.op
+expr.opname # opcode in string
+
+# Get all operands of the expression.
+# This allows us to inspect the available operands, with all keys mapped to fields.
+# e.g., expr.operands['x'] == expr.x
+expr.operands
+```
+
+See [this](https://hex-rays.com/products/ida/support/idapython_docs/ida_hexrays.html#ida_hexrays.cot_add) for more details about the opcode of `cexpr_t`.
+
+**Examples.**
+
+`cot_obj`: global variable reference, `expr.obj_ea` is the address of the global.
+`cot_num`: C number constant, `expr.n` is `cnumber_t`, get the value by `expr.n.value(idaapi.tinfo_t(ida_typeinf.BT_INT64))`.
+`cot_call`: function call, `expr.x` is callee of `cexpr_t`, `expr.a` is arguments of `carglist_t`, get number of arguments `expr.a.size()`, get an argument `expr.a.at(idx)` of `cexpr_t`.
+`cot_cast`: cast expression, `expr.x` is the expression of `cexpr_t` being casted.
+
+In general, `x`, `y` and `z` are 1st, 2nd, 3rd operand respectively, which is also a `cexpr_t`. Such nested structure is very common in `cexpr_t`.
+
+#### Microcode
+
+##### `mba_t` and `minsn_visitor_t`
+
+```python
+import ida_funcs
+import ida_hexrays
+
+def get_func_mba(func_addr, maturity):
+	func = ida_funcs.get_func(func_addr) # Convert address to func_t.
+	mbr = ida_hexrays.mba_ranges_t(func) # Get mba_ranges_t from function.
+	hf = ida_hexrays.hexrays_failure_t() # Error message holder.
+	ida_hexrays.mark_cfunc_dirty(func.start_ea) # Delete the decompilation cache.
+	mba = ida_hexrays.gen_microcode(mbr, hf, None, ida_hexrays.DECOMP_NO_WAIT, maturity)
+	if not mba:
+		print("Cannot get microcode: 0x%08X (%s)" % (hf.errea, hf.desc()))
+		return None
+	return mba # mba_t
+
+# Get the microcode for the given function address, with specified maturity level.
+mba = get_func_mba(0x40114514, ida_hexrays.MMAT_LVARS)
+
+class my_minsn_visitor(ida_hexrays.minsn_visitor_t):
+	def __init__(self):
+		super().__init__()
+
+	def visit_minsn(self):
+		self.curins # Access the visited minsn_t.
+		return 0 # Return non-zero for error.
+
+# Visit all microcode instructions.
+mba.for_all_insns(my_minsn_visitor())
+```
+
+##### `minsn_t` and `mop_t`
+
+```python
+# Given `insn` of type `minsn_t`.
+insn
+
+# Get the instruction address.
+insn.ea
+
+# Get the opcode, defined in ida_hexrays.m_*
+insn.opcode
+
+# Get the left, right and destination operand, of type mop_t.
+insn.l, insn.r, insn.d
+```
+
+```python
+# Given `op` of type `mop_t`.
+op
+
+# Get the type of the operand, defined in ida_hexrays.mop_*
+op.t
+```
+
+For each type, information can be obtained from other fields. For example, if `op.t` is `mop_f`, we can access `op.f`.
+
+```c
+union
+{
+	mreg_t r;           // mop_r   register number
+	mnumber_t *nnn;     // mop_n   immediate value
+	minsn_t *d;         // mop_d   result (destination) of another instruction
+	stkvar_ref_t *s;    // mop_S   stack variable
+	ea_t g;             // mop_v   global variable (its linear address)
+	int b;              // mop_b   block number (used in jmp,call instructions)
+	mcallinfo_t *f;     // mop_f   function call information
+	lvar_ref_t *l;      // mop_l   local variable
+	mop_addr_t *a;      // mop_a   variable whose address is taken
+	char *helper;       // mop_h   helper function name
+	char *cstr;         // mop_str utf8 string constant, user representation
+	mcases_t *c;        // mop_c   cases
+	fnumber_t *fpc;     // mop_fn  floating point constant
+	mop_pair_t *pair;   // mop_p   operand pair
+	scif_t *scif;       // mop_sc  scattered operand info
+};
+```
+
+**Examples.**
+
+`m_call`: `insn.l` is the callee, which is `mop_v` so callee address is `insn.l.g`; `insn.d` is the argument list `mop_f`, so arguments are `insn.d.f.args` of `mcallargs_t`, which work like a C++ vector (`insn.d.f.args.size()` and `insn.d.f.args.at(idx)` can be used to get argument of type `mcallarg_t`, which is inherited from `mop_t`).
+`mop_n`: immediate value, can be obtained by `op.nnn.value`.
+`mop_a`: `&something`, `op.a` is `mop_addr_t`, inherited from `mop_t`, which we can use to get information of operand `something`.
