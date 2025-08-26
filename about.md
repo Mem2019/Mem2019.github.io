@@ -6,7 +6,7 @@ permalink: /about/
 
 ## Who am I
 
-I am a PhD Student at Indiana University Bloomington working on computer security, advised by Professor [XiaoFeng Wang](https://homes.luddy.indiana.edu/xw7/). My research interests involve system security, vulnerability discovery, static analysis, symbolic execution, fuzzing, automatic exploit generation, AI for security, and so on. Besides, I also play CTF with [r3kapig](https://r3kapig.com/).
+I am a Security Engineer at Microsoft Offensive Research & Security Engineering. Prior to that, I was a PhD Student working on computer security, advised by Professor [XiaoFeng Wang](https://wangxiaofeng7.github.io/). My research interests involve system security, vulnerability discovery, static analysis, symbolic execution, fuzzing, automatic exploit generation, AI for security, and so on. Besides, I also play CTF with [r3kapig](https://r3kapig.com/).
 
 ## Publications
 
